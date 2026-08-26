@@ -12,8 +12,11 @@ import type { NotificationPreference } from "@prisma/client";
 import { usePrefs, useT, useUpdatePrefs } from "@/components/i18n/prefs-provider";
 import type { Prefs } from "@/lib/i18n/messages";
 import { MAP_STYLE_IDS, MAP_STYLES } from "@/lib/map-styles";
+import { TrackedObjectsList } from "@/components/map/tracked-objects-list";
+import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
 
-type PrefKey = "webPush" | "gateChanges" | "delaysStatus" | "preflight2h";
+type PrefKey = "webPush" | "gateChanges" | "delaysStatus" | "preflight2h" | "objectAlerts";
 
 type ProviderUsage = {
   configured: boolean;
@@ -34,6 +37,7 @@ export function SettingsPanel({
   openSkyHealthy,
   apiUsage,
   canSeed,
+  tracked = [],
 }: {
   name?: string | null;
   email?: string | null;
@@ -46,11 +50,13 @@ export function SettingsPanel({
     opensky: ProviderUsage;
   };
   canSeed: boolean;
+  tracked?: TrackedAircraftView[];
 }) {
   const t = useT();
   const appearance = usePrefs();
   const updatePrefs = useUpdatePrefs();
   const [local, setLocal] = useState(prefs);
+  const objects = useTrackedAircraft(tracked);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
   const [publicKey, setPublicKey] = useState(vapidPublicKey);
   const { locale, units, theme, mapStyle } = appearance;
@@ -130,7 +136,22 @@ export function SettingsPanel({
           <Card>
             <PrefRow label={t("settings.preflight")} checked={local.preflight2h} onChange={(v) => updatePref("preflight2h", v)} />
           </Card>
+          <Card>
+            <PrefRow
+              label={t("settings.objectAlerts")}
+              checked={local.objectAlerts !== false}
+              onChange={(v) => updatePref("objectAlerts", v)}
+            />
+          </Card>
         </div>
+      </div>
+
+      <div>
+        <p className="mb-2 px-1 text-sm text-muted-foreground">{t("map.objects")}</p>
+        <Card className="p-4">
+          <TrackedObjectsList items={objects.items} onUntrack={objects.untrack} />
+          <p className="mt-2 text-xs leading-snug text-muted-foreground">{t("map.objectHint")}</p>
+        </Card>
       </div>
 
       <div>

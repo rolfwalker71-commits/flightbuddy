@@ -40,7 +40,16 @@ export function NotificationCard({
           <EnrichedAlert model={model} relative={relative} locale={locale} />
         ) : (
           <>
-            <p className="font-medium">{title}</p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 break-words font-medium">{title}</p>
+              {(kind === "object_airborne" || kind === "object_landed") && (
+                <Badge variant={eventBadgeVariant(kind)} className="shrink-0">
+                  {kind === "object_airborne"
+                    ? t(locale, "alerts.eventObjectAirborne")
+                    : t(locale, "alerts.eventObjectLanded")}
+                </Badge>
+              )}
+            </div>
             {body && <p className="text-sm text-muted-foreground">{body}</p>}
             <p className="mt-2 text-xs text-muted-foreground">{relative}</p>
           </>

@@ -1,14 +1,14 @@
 import { FlightStatus } from "@prisma/client";
 import { airportTimeZone } from "./airport-tz";
 import { isLegDelayed, resolveLegTimes, type LegTimes } from "./flight-times";
-import { formatClock, formatStand, formatTimeZoneName, statusText } from "./i18n/format";
+import { formatAltitude, formatClock, formatSpeed, formatStand, formatTimeZoneName, statusText } from "./i18n/format";
 import { t, type Locale, type Units } from "./i18n/messages";
 import { displayFlightNumber } from "./utils";
 
 export const PUSH_TITLE_MAX = 50;
 export const PUSH_BODY_MAX = 150;
 
-export type NotifyKind = "gate" | "status" | "preflight" | "generic";
+export type NotifyKind = "gate" | "status" | "preflight" | "generic" | "object";
 
 export type AlertAirport = {
   iata?: string | null;
@@ -108,6 +108,8 @@ export function alertEventLabel(
 ): string {
   if (kind === "preflight") return t(locale, "alerts.eventPreflight");
   if (kind === "gate") return t(locale, "alerts.eventGate");
+  if (kind === "object_airborne") return t(locale, "alerts.eventObjectAirborne");
+  if (kind === "object_landed") return t(locale, "alerts.eventObjectLanded");
   const fromKind = STATUS_KIND[kind];
   return statusText(fromKind ?? asFlightStatus(status), locale, delayMinutes);
 }
@@ -285,11 +287,39 @@ export function alertCardModel(
   };
 }
 
+export function buildObjectAlertCopy(opts: {
+  locale: Locale;
+  units?: Units;
+  phase: "airborne" | "landed";
+  callsign: string;
+  altitudeFt?: number | null;
+  speedKts?: number | null;
+}): AlertCopy {
+  const locale = opts.locale;
+  const title =
+    opts.phase === "airborne"
+      ? t(locale, "push.objectAirborneTitle", { callsign: opts.callsign })
+      : t(locale, "push.objectLandedTitle", { callsign: opts.callsign });
+  const units = opts.units ?? "metric";
+  const alt = formatAltitude(opts.altitudeFt, locale, units);
+  const speed = formatSpeed(opts.speedKts, locale, units);
+  const body = joinDot([alt !== "—" ? alt : null, speed !== "—" ? speed : null]);
+  const persistKind = opts.phase === "airborne" ? "object_airborne" : "object_landed";
+  return {
+    title: clampPushText(title, PUSH_TITLE_MAX),
+    body: clampPushText(body, PUSH_BODY_MAX),
+    event: alertEventLabel(locale, persistKind),
+    persistKind,
+    flightId: "",
+    url: "/map",
+  };
+}
+
 export function eventBadgeVariant(
   kind: string,
 ): "live" | "success" | "warning" | "destructive" | "default" {
-  if (kind === "preflight" || kind === "departed" || kind === "en_route") return "live";
-  if (kind === "landed" || kind === "boarding") return "success";
+  if (kind === "preflight" || kind === "departed" || kind === "en_route" || kind === "object_airborne") return "live";
+  if (kind === "landed" || kind === "boarding" || kind === "object_landed") return "success";
   if (kind === "delayed") return "warning";
   if (kind === "cancelled" || kind === "diverted") return "destructive";
   return "default";

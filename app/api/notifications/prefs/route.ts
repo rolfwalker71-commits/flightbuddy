@@ -8,6 +8,7 @@ const schema = z.object({
   gateChanges: z.boolean().optional(),
   delaysStatus: z.boolean().optional(),
   preflight2h: z.boolean().optional(),
+  objectAlerts: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request) {

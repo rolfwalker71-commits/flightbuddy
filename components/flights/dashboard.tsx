@@ -7,12 +7,13 @@ import { initials } from "@/lib/utils";
 import { filterFlights, toMapFlight, type UserFlightView } from "@/lib/flight-view";
 import { FlightCard } from "./flight-card";
 import { AddFlightDialog } from "./add-flight-dialog";
-import { FlightMap } from "@/components/map/flight-map";
+import { HomeHeroMap } from "./home-hero-map";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { isLiveStatus } from "@/lib/flight-status";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { greeting } from "@/lib/i18n/format";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
 
 const tabs = [
   { id: "upcoming" as const, labelKey: "home.upcoming" as const },
@@ -25,11 +26,13 @@ export function Dashboard({
   flights,
   unreadAlerts,
   stats,
+  tracked = [],
 }: {
   userName?: string | null;
   flights: UserFlightView[];
   unreadAlerts: number;
   stats: { flights: number; hours: number; countries: number };
+  tracked?: TrackedAircraftView[];
 }) {
   const { locale } = usePrefs();
   const t = useT();
@@ -100,14 +103,10 @@ export function Dashboard({
 
         <aside className="hidden space-y-3 lg:block">
           <Card className="overflow-hidden p-0">
-            <div className="h-56">
-              <FlightMap
-                interactive={false}
-                showLocate
-                autoLocateIfGranted
-                flights={live.slice(0, 4).map((row) => toMapFlight(row.flight))}
-              />
-            </div>
+            <HomeHeroMap
+              flights={live.slice(0, 4).map((row) => toMapFlight(row.flight))}
+              tracked={tracked}
+            />
           </Card>
           <div className="grid grid-cols-3 gap-2">
             <Card className="p-4 text-center">

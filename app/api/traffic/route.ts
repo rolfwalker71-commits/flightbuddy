@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { fetchOpenSkyBbox, openSkyToTelemetry } from "@/lib/opensky";
 import { openSkyConfig } from "@/lib/server-env";
+import { resolveOperator } from "@/lib/operator";
 import {
   bboxAreaSqDeg,
   callsignPrefix,
@@ -88,11 +89,16 @@ export async function GET(req: Request) {
     const tel = openSkyToTelemetry(s);
     const prefix = callsignPrefix(s.callsign);
     const airline = prefix ? airlines.get(prefix) : undefined;
+    const resolved = resolveOperator({
+      callsign: s.callsign,
+      airlineName: airline?.name,
+      airlineIata: airline?.iata ?? (prefix?.length === 2 ? prefix : null),
+    });
     return {
       icao24: s.icao24,
       callsign: s.callsign,
-      airlineName: airline?.name ?? null,
-      airlineIata: airline?.iata ?? null,
+      airlineName: resolved.operator,
+      airlineIata: resolved.airlineIata,
       lat: s.lat as number,
       lon: s.lon as number,
       altitudeFt: tel.altitudeFt,

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { airlineInitials, airlineLogoUrl } from "@/lib/airline-logo";
 import { cn } from "@/lib/utils";
 
 const SIZE = {
+  xs: { box: "size-6", fallback: "text-[0.625rem]", px: 24 },
   sm: { box: "size-8", fallback: "text-xs", px: 32 },
   md: { box: "size-12", fallback: "text-sm", px: 48 },
   lg: { box: "size-24", fallback: "text-lg", px: 96 },
@@ -22,6 +23,9 @@ export function AirlineLogo({
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [iata]);
   const src = airlineLogoUrl(iata);
   const fallback = airlineInitials(iata, name);
   const label = name?.trim() || iata?.trim() || fallback;

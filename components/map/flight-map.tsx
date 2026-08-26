@@ -11,14 +11,15 @@ import {
   pointAlongGreatCircle,
   type LatLon,
 } from "@/lib/geo";
-import { formatAltitudePair, formatSpeedPair } from "@/lib/i18n/format";
 import { MAP_STYLES, mapLibreStyle } from "@/lib/map-styles";
+import { readSavedMapCamera, writeSavedMapCamera } from "@/lib/map-camera";
 import { readSavedMapZoom, writeSavedMapZoom } from "@/lib/map-zoom";
 import type { ViewportBounds, ViewportTrafficAircraft } from "@/lib/viewport-traffic";
 import { deadReckonAircraft } from "@/lib/viewport-traffic";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { cn } from "@/lib/utils";
 import { createNorthPlaneImage } from "./plane-icon";
+import { TrafficFlag } from "./traffic-flag";
 
 const TRAFFIC_SOURCE = "viewport-traffic";
 const TRAFFIC_LAYER = "viewport-traffic-planes";
@@ -62,13 +63,7 @@ function planeFix(flight: MapFlight): LatLon | null {
   return p;
 }
 
-function trafficFlag(ac: ViewportTrafficAircraft, locale: "de" | "en") {
-  const callsign = ac.callsign?.trim() || ac.icao24.slice(0, 6).toUpperCase();
-  const alt = formatAltitudePair(ac.altitudeFt, locale).primary;
-  const spd = formatSpeedPair(ac.speedKts, locale).primary;
-  const metrics = `${alt} · ${spd}`;
-  return ac.airlineName ? `${callsign}\n${ac.airlineName}\n${metrics}` : `${callsign}\n${metrics}`;
-}
+const CLICK_PAD = 16;
 
 function mapBoundsBox(map: Map): ViewportBounds {
   const b = map.getBounds();
@@ -151,14 +146,14 @@ function applyFollowOrBounds(
   const focused = resolveFocused(flights, focusedFlightId);
   const fix = focused ? planeFix(focused) : null;
   if (fix && !gesturing) {
-    followFocusedPlane(map, flights, focusedFlightId, follow, programmatic);
-    return;
+    return followFocusedPlane(map, flights, focusedFlightId, follow, programmatic);
   }
   if (!fix) {
     follow.map = map;
     follow.flightId = focused?.id ?? null;
-    fitFlightBounds(map, flights, programmatic);
+    return fitFlightBounds(map, flights, programmatic);
   }
+  return false;
 }
 
 export function FlightMap({
@@ -170,9 +165,13 @@ export function FlightMap({
   autoLocateIfGranted = false,
   locateClassName,
   viewportTraffic,
+  selectedTrafficId,
   onViewportChange,
   onSelectFlight,
   onSelectTraffic,
+  followCamera = false,
+  persistCameraKey,
+  showFollowResume = true,
 }: {
   flights: MapFlight[];
   className?: string;
@@ -182,9 +181,13 @@ export function FlightMap({
   autoLocateIfGranted?: boolean;
   locateClassName?: string;
   viewportTraffic?: ViewportTrafficAircraft[];
+  selectedTrafficId?: string | null;
   onViewportChange?: (bounds: ViewportBounds) => void;
   onSelectFlight?: (flightId: string) => void;
   onSelectTraffic?: (aircraft: ViewportTrafficAircraft) => void;
+  followCamera?: boolean;
+  persistCameraKey?: string;
+  showFollowResume?: boolean;
 }) {
   const t = useT();
   const { mapStyle, locale } = usePrefs();
@@ -196,6 +199,9 @@ export function FlightMap({
   const programmaticRef = useRef(false);
   const gesturingRef = useRef(false);
   const userOverrideRef = useRef(false);
+  const pendingJumpRef = useRef(true);
+  const followCameraRef = useRef(followCamera);
+  const persistCameraKeyRef = useRef(persistCameraKey);
   const autoLocateRef = useRef(autoLocateIfGranted);
   const onViewportChangeRef = useRef(onViewportChange);
   const onSelectFlightRef = useRef(onSelectFlight);
@@ -205,29 +211,58 @@ export function FlightMap({
     aircraft: [],
   });
   const trafficSigRef = useRef("");
+  const paintTrafficRef = useRef<() => void>(() => {});
+  const boundLayersRef = useRef(new Set<string>());
   const [userOverride, setUserOverride] = useState(false);
+  const [trafficFlags, setTrafficFlags] = useState<
+    Array<{ ac: ViewportTrafficAircraft; x: number; y: number }>
+  >([]);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
   flightsRef.current = flights;
   focusedIdRef.current = focusedFlightId;
+  followCameraRef.current = followCamera;
+  persistCameraKeyRef.current = persistCameraKey;
   autoLocateRef.current = autoLocateIfGranted;
   onViewportChangeRef.current = onViewportChange;
   onSelectFlightRef.current = onSelectFlight;
   onSelectTrafficRef.current = onSelectTraffic;
+  const prevFocusedRef = useRef(focusedFlightId);
+  if (prevFocusedRef.current !== focusedFlightId) {
+    prevFocusedRef.current = focusedFlightId;
+    if (!persistCameraKey) {
+      pendingJumpRef.current = true;
+      userOverrideRef.current = false;
+    }
+  }
 
   useEffect(() => {
     if (!ref.current) return;
     mapRef.current?.remove();
     followRef.current = { map: null, flightId: null };
+    const savedCamera = persistCameraKey ? readSavedMapCamera(persistCameraKey) : null;
+    pendingJumpRef.current = !persistCameraKey;
+    userOverrideRef.current = Boolean(savedCamera);
+    setUserOverride(Boolean(savedCamera));
     const map = new maplibregl.Map({
       container: ref.current,
       style: mapLibreStyle(mapStyle),
-      center: [-20, 45],
-      zoom: 2.4,
+      center: savedCamera ? [savedCamera.lng, savedCamera.lat] : [-20, 45],
+      zoom: savedCamera ? savedCamera.zoom : 2.4,
       attributionControl: { compact: true },
       interactive,
     });
     mapRef.current = map;
+
+    const persistCamera = () => {
+      if (!persistCameraKey || programmaticRef.current || !userOverrideRef.current) return;
+      const center = map.getCenter();
+      writeSavedMapCamera(persistCameraKey, {
+        lng: center.lng,
+        lat: center.lat,
+        zoom: map.getZoom(),
+      });
+    };
 
     const persistZoom = () => {
       if (!interactive) return;
@@ -237,7 +272,13 @@ export function FlightMap({
     };
 
     const onGestureStart = () => {
-      if (!programmaticRef.current) gesturingRef.current = true;
+      if (programmaticRef.current) return;
+      gesturingRef.current = true;
+      if (!followCameraRef.current) {
+        pendingJumpRef.current = false;
+        userOverrideRef.current = true;
+        setUserOverride(true);
+      }
     };
     const reportViewport = () => {
       onViewportChangeRef.current?.(mapBoundsBox(map));
@@ -248,14 +289,7 @@ export function FlightMap({
       if (programmaticRef.current) return;
       gesturingRef.current = false;
       persistZoom();
-      if (userOverrideRef.current) return;
-      followFocusedPlane(
-        map,
-        flightsRef.current,
-        focusedIdRef.current,
-        followRef.current,
-        programmaticRef,
-      );
+      persistCamera();
     };
 
     if (interactive) {
@@ -270,14 +304,18 @@ export function FlightMap({
 
     if (showLocate && autoLocateRef.current) {
       const tryAuto = () => {
-        const focused = resolveFocused(flightsRef.current, focusedIdRef.current);
-        if (focused && planeFix(focused)) return;
-        if (hasRouteBounds(flightsRef.current)) return;
+        if (persistCameraKey && readSavedMapCamera(persistCameraKey)) return;
+        if (!persistCameraKey) {
+          const focused = resolveFocused(flightsRef.current, focusedIdRef.current);
+          if (focused && planeFix(focused)) return;
+          if (hasRouteBounds(flightsRef.current)) return;
+        }
         if (!navigator.geolocation) return;
         const query = navigator.permissions?.query;
         const locateSilent = () => {
           navigator.geolocation.getCurrentPosition(
             (pos) => {
+              pendingJumpRef.current = false;
               userOverrideRef.current = true;
               setUserOverride(true);
               const zoom = map.getZoom() < 5 ? USER_LOCATE_ZOOM : map.getZoom();
@@ -287,6 +325,13 @@ export function FlightMap({
                 zoom,
               });
               programmaticRef.current = false;
+              if (persistCameraKey) {
+                writeSavedMapCamera(persistCameraKey, {
+                  lng: pos.coords.longitude,
+                  lat: pos.coords.latitude,
+                  zoom,
+                });
+              }
             },
             () => {},
             { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
@@ -304,10 +349,11 @@ export function FlightMap({
     }
 
     return () => {
+      boundLayersRef.current = new Set();
       map.remove();
       mapRef.current = null;
     };
-  }, [interactive, mapStyle, showLocate]);
+  }, [interactive, mapStyle, showLocate, persistCameraKey]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -414,8 +460,10 @@ export function FlightMap({
         });
       }
 
-      if (!userOverrideRef.current) {
-        applyFollowOrBounds(
+      const freeCamera = Boolean(persistCameraKey);
+      const continuousFollow = !freeCamera && (followCamera || !interactive);
+      if (!freeCamera && !userOverrideRef.current && (continuousFollow || pendingJumpRef.current)) {
+        const moved = applyFollowOrBounds(
           map,
           flights,
           focusedFlightId,
@@ -423,12 +471,17 @@ export function FlightMap({
           programmaticRef,
           gesturingRef.current,
         );
+        if (moved && !continuousFollow) {
+          pendingJumpRef.current = false;
+          userOverrideRef.current = true;
+          setUserOverride(true);
+        }
       }
     };
 
     if (map.isStyleLoaded()) draw();
     else map.once("load", draw);
-  }, [flights, focusedFlightId, mapStyle]);
+  }, [flights, focusedFlightId, mapStyle, followCamera, interactive, persistCameraKey]);
 
   useEffect(() => {
     const list = viewportTraffic ?? [];
@@ -439,119 +492,190 @@ export function FlightMap({
     } else {
       trafficPollRef.current = { ...trafficPollRef.current, aircraft: list };
     }
+    paintTrafficRef.current();
   }, [viewportTraffic]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    let raf = 0;
+    let alive = true;
 
-    const paint = () => {
-      if (!map.isStyleLoaded()) return;
+    const visibleTraffic = () => {
+      const elapsed = Date.now() - trafficPollRef.current.at;
+      const frozen = document.visibilityState === "hidden";
       const skip = new Set(
         flightsRef.current
-          .map((f) => f.icao24?.toLowerCase())
+          .map((flight) => flight.icao24?.toLowerCase())
           .filter((id): id is string => Boolean(id)),
       );
-      const palette = MAP_STYLES[mapStyle] ?? MAP_STYLES.dark;
-      ensurePlaneImage(map, palette.plane, palette.planeStroke);
-      const elapsed = Date.now() - trafficPollRef.current.at;
-      const hidden = document.visibilityState === "hidden";
-      const features = trafficPollRef.current.aircraft
+      return trafficPollRef.current.aircraft
         .filter((ac) => !skip.has(ac.icao24))
         .map((ac) => {
-          const pos = hidden ? { lat: ac.lat, lon: ac.lon } : deadReckonAircraft(ac, elapsed);
-          return {
+          const pos = frozen ? { lat: ac.lat, lon: ac.lon } : deadReckonAircraft(ac, elapsed);
+          return { ac, pos };
+        });
+    };
+
+    const syncFlags = () => {
+      if (!alive) return;
+      try {
+        const width = map.getContainer().clientWidth;
+        const height = map.getContainer().clientHeight;
+        if (width < 8 || height < 8) return;
+        const next: Array<{ ac: ViewportTrafficAircraft; x: number; y: number }> = [];
+        for (const { ac, pos } of visibleTraffic()) {
+          const p = map.project([pos.lon, pos.lat]);
+          if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+          if (p.x <= -120 || p.y <= -48 || p.x >= width + 24 || p.y >= height + 24) continue;
+          next.push({ ac, x: p.x, y: p.y });
+        }
+        setTrafficFlags(next);
+      } catch {
+        // Keep last-known flags if the camera transform is mid-update.
+      }
+    };
+
+    const paint = () => {
+      if (!alive) return;
+      try {
+        if (map.isStyleLoaded()) {
+          const palette = MAP_STYLES[mapStyle] ?? MAP_STYLES.dark;
+          ensurePlaneImage(map, palette.plane, palette.planeStroke);
+          const features = visibleTraffic().map(({ ac, pos }) => ({
             type: "Feature" as const,
-            id: ac.icao24,
             properties: {
               kind: "traffic",
               heading: ac.heading ?? 0,
-              flag: trafficFlag(ac, locale),
               icao24: ac.icao24,
             },
             geometry: { type: "Point" as const, coordinates: [pos.lon, pos.lat] },
-          };
-        });
-      const data = { type: "FeatureCollection" as const, features };
-      const source = map.getSource(TRAFFIC_SOURCE) as maplibregl.GeoJSONSource | undefined;
-      if (source) source.setData(data);
-      else map.addSource(TRAFFIC_SOURCE, { type: "geojson", data });
+          }));
+          const data = { type: "FeatureCollection" as const, features };
+          const source = map.getSource(TRAFFIC_SOURCE) as maplibregl.GeoJSONSource | undefined;
+          if (source) source.setData(data);
+          else map.addSource(TRAFFIC_SOURCE, { type: "geojson", data });
 
-      if (!map.getLayer(TRAFFIC_LAYER)) {
-        map.addLayer({
-          id: TRAFFIC_LAYER,
-          type: "symbol",
-          source: TRAFFIC_SOURCE,
-          layout: {
-            "icon-image": PLANE_IMAGE_ID,
-            "icon-size": 0.9,
-            "icon-rotate": ["get", "heading"],
-            "icon-rotation-alignment": "map",
-            "icon-allow-overlap": true,
-            "icon-ignore-placement": true,
-            "icon-anchor": "center",
-            "text-field": ["get", "flag"],
-            "text-size": 11,
-            "text-anchor": "left",
-            "text-offset": [1.35, 0],
-            "text-allow-overlap": false,
-            "text-optional": true,
-            "text-line-height": 1.15,
-            "text-font": ["Open Sans Regular"],
-          },
-          paint: {
-            "text-color": palette.plane,
-            "text-halo-color": palette.planeStroke,
-            "text-halo-width": 1.4,
-            "text-halo-blur": 0.2,
-          },
-        }, map.getLayer("planes") ? "planes" : undefined);
+          if (!map.getLayer(TRAFFIC_LAYER)) {
+            map.addLayer(
+              {
+                id: TRAFFIC_LAYER,
+                type: "symbol",
+                source: TRAFFIC_SOURCE,
+                layout: {
+                  "icon-image": PLANE_IMAGE_ID,
+                  "icon-size": 0.9,
+                  "icon-rotate": ["get", "heading"],
+                  "icon-rotation-alignment": "map",
+                  "icon-allow-overlap": true,
+                  "icon-ignore-placement": true,
+                  "text-allow-overlap": true,
+                  "text-ignore-placement": true,
+                  "icon-anchor": "center",
+                },
+              },
+              map.getLayer("planes") ? "planes" : undefined,
+            );
+          } else if (map.getLayoutProperty(TRAFFIC_LAYER, "text-field")) {
+            map.setLayoutProperty(TRAFFIC_LAYER, "text-field", "");
+          }
+        }
+      } catch {
+        // Style/source can be mid-reload after zoom; flags still sync below.
       }
+      syncFlags();
+    };
+
+    paintTrafficRef.current = paint;
+
+    const onMove = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        syncFlags();
+      });
     };
 
     if (map.isStyleLoaded()) paint();
     else map.once("load", paint);
+    map.on("move", onMove);
+    map.on("rotate", onMove);
+    map.on("pitch", onMove);
+    map.on("idle", syncFlags);
 
-    const interval =
-      (viewportTraffic?.length ?? 0) > 0
-        ? window.setInterval(() => {
-            if (document.visibilityState === "hidden") return;
-            paint();
-          }, 250)
-        : 0;
+    const interval = window.setInterval(() => {
+      if (!alive || document.visibilityState === "hidden") return;
+      if (trafficPollRef.current.aircraft.length === 0) {
+        syncFlags();
+        return;
+      }
+      paint();
+    }, 250);
 
     return () => {
-      if (interval) window.clearInterval(interval);
+      alive = false;
+      paintTrafficRef.current = () => {};
+      window.clearInterval(interval);
+      if (raf) window.cancelAnimationFrame(raf);
       map.off("load", paint);
+      map.off("move", onMove);
+      map.off("rotate", onMove);
+      map.off("pitch", onMove);
+      map.off("idle", syncFlags);
     };
-  }, [viewportTraffic, mapStyle, locale]);
+  }, [mapStyle, interactive, showLocate, persistCameraKey]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !interactive) return;
 
-    const layerIds = () =>
-      [TRAFFIC_LAYER, "planes"].filter((id) => Boolean(map.getLayer(id)));
+    const layerIds = () => [TRAFFIC_LAYER, "planes"].filter((id) => Boolean(map.getLayer(id)));
 
-    const onClick = (e: maplibregl.MapMouseEvent) => {
+    const queryHits = (point: maplibregl.Point) => {
       const layers = layerIds();
-      if (!layers.length) return;
-      const hits = map.queryRenderedFeatures(e.point, { layers });
-      const hit = hits[0];
-      if (!hit) return;
+      if (!layers.length) return [];
+      return map.queryRenderedFeatures(
+        [
+          [point.x - CLICK_PAD, point.y - CLICK_PAD],
+          [point.x + CLICK_PAD, point.y + CLICK_PAD],
+        ],
+        { layers },
+      );
+    };
+
+    const selectHit = (hit: maplibregl.MapGeoJSONFeature | undefined) => {
+      if (!hit) return false;
       const props = hit.properties ?? {};
       if (props.kind === "traffic" && typeof props.icao24 === "string") {
         const ac = trafficPollRef.current.aircraft.find((a) => a.icao24 === props.icao24);
-        if (ac) {
-          userOverrideRef.current = true;
-          setUserOverride(true);
-          onSelectTrafficRef.current?.(ac);
-        }
-        return;
+        if (!ac) return false;
+        pendingJumpRef.current = false;
+        userOverrideRef.current = true;
+        setUserOverride(true);
+        onSelectTrafficRef.current?.(ac);
+        return true;
       }
       if (typeof props.flightId === "string") {
         onSelectFlightRef.current?.(props.flightId);
+        return true;
       }
+      return false;
+    };
+
+    let layerHandled = false;
+
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      if (layerHandled) {
+        layerHandled = false;
+        return;
+      }
+      const hits = queryHits(e.point);
+      if (!hits.length) return;
+      selectHit(hits[0]);
+    };
+
+    const onLayerClick = (e: maplibregl.MapLayerMouseEvent) => {
+      if (selectHit(e.features?.[0])) layerHandled = true;
     };
 
     const onMove = (e: maplibregl.MapMouseEvent) => {
@@ -560,42 +684,63 @@ export function FlightMap({
         map.getCanvas().style.cursor = "";
         return;
       }
-      const hits = map.queryRenderedFeatures(e.point, { layers });
-      map.getCanvas().style.cursor = hits.length ? "pointer" : "";
+      map.getCanvas().style.cursor = queryHits(e.point).length ? "pointer" : "";
+    };
+
+    const onLayerEnter = () => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const onLayerLeave = () => {
+      map.getCanvas().style.cursor = "";
+    };
+
+    const bindLayers = () => {
+      for (const id of [TRAFFIC_LAYER, "planes"]) {
+        if (!map.getLayer(id) || boundLayersRef.current.has(id)) continue;
+        boundLayersRef.current.add(id);
+        map.on("click", id, onLayerClick);
+        map.on("mouseenter", id, onLayerEnter);
+        map.on("mouseleave", id, onLayerLeave);
+      }
     };
 
     const bind = () => {
       map.on("click", onClick);
       map.on("mousemove", onMove);
+      bindLayers();
     };
     if (map.isStyleLoaded()) bind();
     else map.once("load", bind);
 
+    const retry = window.setInterval(bindLayers, 400);
+
     return () => {
+      window.clearInterval(retry);
       map.off("click", onClick);
       map.off("mousemove", onMove);
       map.off("load", bind);
+      for (const id of [TRAFFIC_LAYER, "planes"]) {
+        map.off("click", id, onLayerClick);
+        map.off("mouseenter", id, onLayerEnter);
+        map.off("mouseleave", id, onLayerLeave);
+      }
+      boundLayersRef.current = new Set();
       map.getCanvas().style.cursor = "";
     };
   }, [interactive, mapStyle, viewportTraffic]);
 
-  const prevFocusedRef = useRef(focusedFlightId);
   useEffect(() => {
-    if (prevFocusedRef.current === focusedFlightId) return;
-    prevFocusedRef.current = focusedFlightId;
-    userOverrideRef.current = false;
-    setUserOverride(false);
+    setUserOverride(userOverrideRef.current);
     setLocateError(null);
   }, [focusedFlightId]);
 
   const pauseFollowForUser = () => {
+    pendingJumpRef.current = false;
     userOverrideRef.current = true;
     setUserOverride(true);
   };
 
   const resumePlaneFollow = () => {
-    userOverrideRef.current = false;
-    setUserOverride(false);
     setLocateError(null);
     const map = mapRef.current;
     if (!map) return;
@@ -607,6 +752,15 @@ export function FlightMap({
       programmaticRef,
       false,
     );
+    if (followCamera) {
+      pendingJumpRef.current = false;
+      userOverrideRef.current = false;
+      setUserOverride(false);
+    } else {
+      pendingJumpRef.current = false;
+      userOverrideRef.current = true;
+      setUserOverride(true);
+    }
   };
 
   const centerOnUser = () => {
@@ -628,6 +782,14 @@ export function FlightMap({
           zoom,
         });
         programmaticRef.current = false;
+        const key = persistCameraKeyRef.current;
+        if (key) {
+          writeSavedMapCamera(key, {
+            lng: pos.coords.longitude,
+            lat: pos.coords.latitude,
+            zoom,
+          });
+        }
         setLocating(false);
       },
       (err) => {
@@ -644,6 +806,33 @@ export function FlightMap({
   return (
     <div className={cn("relative", className ?? "h-full w-full")}>
       <div ref={ref} className="h-full w-full" />
+      {trafficFlags.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden">
+          {trafficFlags.map((flag) => (
+            <div
+              key={flag.ac.icao24}
+              className={cn("absolute", interactive && "pointer-events-auto")}
+              style={{
+                left: flag.x,
+                top: flag.y,
+                transform: "translate(1.15rem, -50%)",
+              }}
+            >
+              <TrafficFlag
+                aircraft={flag.ac}
+                locale={locale}
+                selected={flag.ac.icao24 === selectedTrafficId}
+                onSelect={(ac) => {
+                  pendingJumpRef.current = false;
+                  userOverrideRef.current = true;
+                  setUserOverride(true);
+                  onSelectTrafficRef.current?.(ac);
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {showLocate && (
         <div className={cn("absolute right-2 top-2 z-10 flex flex-col items-end gap-1", locateClassName)}>
           <button
@@ -656,7 +845,7 @@ export function FlightMap({
           >
             <Crosshair className={cn("size-4", locating && "animate-pulse")} />
           </button>
-          {userOverride && canResumeFollow && (
+          {showFollowResume && userOverride && canResumeFollow && (
             <button
               type="button"
               onClick={resumePlaneFollow}

@@ -5,6 +5,8 @@ import { getRedis } from "@/lib/redis";
 import { FLIGHT_POLL_QUEUE, REMINDER_QUEUE, scheduleFlightPoll } from "@/lib/queue";
 import { pollFlight } from "@/lib/polling";
 import { notifyUsers } from "@/lib/push";
+import { pollTrackedAircraft } from "@/lib/tracked-aircraft";
+import { openSkyConfig } from "@/lib/server-env";
 
 async function recoverDueFlights() {
   const due = await prisma.flight.findMany({
@@ -84,6 +86,21 @@ setInterval(() => {
 setInterval(() => {
   void recoverRecurringFlights();
 }, 15 * 60 * 1000);
+
+const objectPollMs = Math.min(90_000, Math.max(30_000, openSkyConfig().minIntervalMs));
+
+async function pollSavedObjects() {
+  try {
+    await pollTrackedAircraft();
+  } catch (err) {
+    console.error("[objects] poll failed", err);
+  }
+}
+
+void pollSavedObjects();
+setInterval(() => {
+  void pollSavedObjects();
+}, objectPollMs);
 
 function shutdown() {
   void Promise.all([pollWorker.close(), reminderWorker.close()]).then(() => process.exit(0));

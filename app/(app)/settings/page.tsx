@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { getApiUsageSnapshot } from "@/lib/api-quota";
 import { getVapidConfig } from "@/lib/vapid";
 import { SettingsPanel } from "@/components/settings/settings-panel";
+import { listTrackedAircraft } from "@/lib/tracked-aircraft";
+import { toPlain } from "@/lib/serialize";
 
 export default async function SettingsPage() {
   const session = await auth();
@@ -11,7 +13,11 @@ export default async function SettingsPage() {
     (await prisma.notificationPreference.findUnique({ where: { userId } })) ??
     (await prisma.notificationPreference.create({ data: { userId } }));
 
-  const [vapid, apiUsage] = await Promise.all([getVapidConfig(), getApiUsageSnapshot()]);
+  const [vapid, apiUsage, tracked] = await Promise.all([
+    getVapidConfig(),
+    getApiUsageSnapshot(),
+    listTrackedAircraft(userId),
+  ]);
 
   return (
     <SettingsPanel
@@ -23,6 +29,7 @@ export default async function SettingsPage() {
       openSkyHealthy={apiUsage.opensky.healthy}
       apiUsage={apiUsage}
       canSeed={session!.user.role === "ADMIN"}
+      tracked={toPlain(tracked)}
     />
   );
 }

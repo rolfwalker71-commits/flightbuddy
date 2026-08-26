@@ -1,3 +1,4 @@
+import { candidateCallsigns, matchesCallsign } from "./callsign";
 import { destinationPoint, type LatLon } from "./geo";
 
 export type ViewportBounds = {
@@ -93,6 +94,27 @@ export function callsignPrefix(callsign: string | null): string | null {
   const compact = callsign.replace(/[^A-Z0-9]/gi, "").toUpperCase();
   const match = compact.match(/^([A-Z]{2,3})/);
   return match?.[1] ?? null;
+}
+
+export function trafficMatchesFlight(
+  ac: Pick<ViewportTrafficAircraft, "icao24" | "callsign">,
+  flight: {
+    icao24?: string | null;
+    flightNumber: string;
+    airlineIata?: string | null;
+    airlineIcao?: string | null;
+    airline?: { iata?: string | null; icao?: string | null } | null;
+  },
+) {
+  if (flight.icao24 && flight.icao24.toLowerCase() === ac.icao24.toLowerCase()) return true;
+  return matchesCallsign(
+    ac.callsign,
+    candidateCallsigns({
+      flightNumber: flight.flightNumber,
+      airlineIata: flight.airlineIata ?? flight.airline?.iata,
+      airlineIcao: flight.airlineIcao ?? flight.airline?.icao,
+    }),
+  );
 }
 
 export function deadReckonAircraft(

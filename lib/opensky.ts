@@ -5,6 +5,9 @@ import { takeToken } from "./rate-limit";
 import { boundingBox, type LatLon } from "./geo";
 import { getStoredOpenSkyRemaining, persistOpenSkyQuota, parseOpenSkyQuotaHeaders } from "./api-quota";
 import type { ViewportBounds } from "./viewport-traffic";
+import { candidateCallsigns, matchesCallsign, normalizeCallsign } from "./callsign";
+
+export { candidateCallsigns, matchesCallsign, normalizeCallsign };
 
 const BASE = "https://opensky-network.org/api";
 const TOKEN_URL =
@@ -157,38 +160,6 @@ async function loggedFetch(endpoint: string, retried = false): Promise<OpenSkyHt
   }
 }
 
-/** Strip spaces and leading zeros in the numeric part: SWR065 → SWR65. */
-export function normalizeCallsign(value: string) {
-  const compact = value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
-  const match = compact.match(/^([A-Z]+)0*([0-9]+[A-Z]*)$/);
-  return match ? `${match[1]}${match[2]}` : compact;
-}
-
-export function candidateCallsigns(opts: {
-  flightNumber: string;
-  airlineIata?: string | null;
-  airlineIcao?: string | null;
-}) {
-  const num = normalizeCallsign(opts.flightNumber);
-  const digits = num.replace(/^[A-Z]+/, "");
-  const set = new Set<string>();
-  if (num) set.add(num);
-  if (opts.airlineIcao && digits) set.add(normalizeCallsign(`${opts.airlineIcao}${digits}`));
-  if (opts.airlineIata && digits) set.add(normalizeCallsign(`${opts.airlineIata}${digits}`));
-  return [...set];
-}
-
-export function matchesCallsign(callsign: string | null, candidates: string[]) {
-  if (!callsign) return false;
-  const normalized = normalizeCallsign(callsign);
-  return candidates.some((cand) => {
-    const n = normalizeCallsign(cand);
-    if (normalized === n) return true;
-    // Allow a trailing letter suffix (SWR65A) but not extra digits (SWR650).
-    return normalized.startsWith(n) && /^[A-Z]+$/.test(normalized.slice(n.length));
-  });
-}
-
 export async function fetchOpenSkyStates(opts: {
   icao24?: string | null;
   origin?: LatLon | null;
@@ -223,6 +194,74 @@ export type OpenSkyBboxResult = OpenSkyHttpResult & {
   gated: boolean;
   retryAfterMs: number;
 };
+
+const ICAO24_BATCH = 40;
+
+function uniqueIcao24s(values: string[]) {
+  return [...new Set(values.map((v) => v.trim().toLowerCase()).filter(Boolean))];
+}
+
+function chunk<T>(items: T[], size: number) {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * State vectors for known transponders — one OpenSky call per batch
+ * (`icao24=hex1,hex2`), never a world scan.
+ */
+export async function fetchOpenSkyByIcao24s(icao24s: string[]): Promise<OpenSkyBboxResult> {
+  const ids = uniqueIcao24s(icao24s);
+  if (!ids.length) {
+    return {
+      status: 200,
+      states: [],
+      remaining: await getStoredOpenSkyRemaining(),
+      retryAfterSeconds: null,
+      gated: false,
+      retryAfterMs: 0,
+    };
+  }
+
+  const { minIntervalMs } = openSkyConfig();
+  const gate = await takeToken({
+    key: "ratelimit:opensky",
+    minIntervalMs,
+  });
+  if (!gate.allowed) {
+    return {
+      status: 0,
+      states: [],
+      remaining: await getStoredOpenSkyRemaining(),
+      retryAfterSeconds: null,
+      gated: true,
+      retryAfterMs: gate.retryAfterMs,
+    };
+  }
+
+  const states: OpenSkyState[] = [];
+  let remaining: number | null = null;
+  let status = 200;
+  for (const group of chunk(ids, ICAO24_BATCH)) {
+    const endpoint = `/states/all?icao24=${group.map(encodeURIComponent).join(",")}`;
+    const result = await loggedFetch(endpoint);
+    status = result.status;
+    remaining = result.remaining;
+    states.push(...result.states);
+    if (result.status === 429) {
+      return { ...result, states, gated: false, retryAfterMs: (result.retryAfterSeconds ?? 60) * 1000 };
+    }
+  }
+  return {
+    status,
+    states,
+    remaining,
+    retryAfterSeconds: null,
+    gated: false,
+    retryAfterMs: 0,
+  };
+}
 
 /** All state vectors in a bounding box — one OpenSky call, not per aircraft. */
 export async function fetchOpenSkyBbox(box: ViewportBounds): Promise<OpenSkyBboxResult> {

@@ -30,8 +30,18 @@ import { isLegDelayed, resolveLegTimes } from "@/lib/flight-times";
 import { AirlineLogo } from "@/components/flights/airline-logo";
 import { RecurringMark, TrackDailyToggle } from "@/components/flights/track-daily-toggle";
 import { useLiveFlights } from "@/lib/use-live-flights";
+import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import { useViewportTraffic } from "@/lib/use-viewport-traffic";
-import { boundsNearlyEqual, type ViewportBounds, type ViewportTrafficAircraft } from "@/lib/viewport-traffic";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import { displayCallsign } from "@/lib/callsign";
+import { TrackObjectButton } from "./track-object-button";
+import { TrackedObjectsList } from "./tracked-objects-list";
+import {
+  boundsNearlyEqual,
+  trafficMatchesFlight,
+  type ViewportBounds,
+  type ViewportTrafficAircraft,
+} from "@/lib/viewport-traffic";
 
 const TRACKED_OPEN_KEY = "fb:liveMap.trackedOpen";
 const DETAIL_OPEN_KEY = "fb:liveMap.detailOpen";
@@ -74,10 +84,17 @@ function usePersistedOpen(key: string, fallback = true) {
   return [open, set] as const;
 }
 
-export function LiveMapView({ flights: initial }: { flights: UserFlightView[] }) {
+export function LiveMapView({
+  flights: initial,
+  tracked: initialTracked = [],
+}: {
+  flights: UserFlightView[];
+  tracked?: TrackedAircraftView[];
+}) {
   const t = useT();
   const { locale, units } = usePrefs();
   const flights = useLiveFlights(initial);
+  const objects = useTrackedAircraft(initialTracked);
   const [selectedId, setSelectedId] = useState(flights[0]?.flight.id);
   const [selectedTraffic, setSelectedTraffic] = useState<ViewportTrafficAircraft | null>(null);
   const [trackedOpen, setTrackedOpen] = usePersistedOpen(TRACKED_OPEN_KEY, true);
@@ -90,6 +107,10 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
     setViewport((prev) => (boundsNearlyEqual(prev, bounds) ? prev : bounds));
   }, []);
   const traffic = useViewportTraffic(trafficOn, viewport);
+
+  useEffect(() => {
+    if (!trafficOn) setSelectedTraffic(null);
+  }, [trafficOn]);
 
   useEffect(() => {
     if (!selectedTraffic) return;
@@ -108,10 +129,17 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
 
   const selectTraffic = useCallback(
     (ac: ViewportTrafficAircraft) => {
+      const tracked = flights.find((row) => trafficMatchesFlight(ac, row.flight));
+      if (tracked) {
+        setSelectedId(tracked.flight.id);
+        setSelectedTraffic(null);
+        setDetailOpen(true);
+        return;
+      }
       setSelectedTraffic(ac);
       setDetailOpen(true);
     },
-    [setDetailOpen],
+    [flights, setDetailOpen],
   );
 
   const mapFlights = useMemo(
@@ -134,9 +162,11 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
         className="absolute inset-0"
         flights={mapFlights}
         focusedFlightId={selectedFlight?.flight.id}
+        followCamera={false}
         showLocate
         locateClassName={cn("right-3 top-3", showDetail && detailOpen ? "md:right-[21.5rem]" : "md:right-16")}
         viewportTraffic={trafficOn ? traffic.aircraft : undefined}
+        selectedTrafficId={selectedTraffic?.icao24}
         onViewportChange={onViewportChange}
         onSelectFlight={selectFlight}
         onSelectTraffic={selectTraffic}
@@ -144,6 +174,19 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
 
       <Card className="absolute left-3 top-3 z-10 max-w-[16.5rem] p-3 md:hidden">
         <ViewportTrafficToggle id="viewport-traffic-mobile" on={trafficOn} onToggle={setTrafficOn} traffic={traffic} />
+        {objects.items.length > 0 && (
+          <div className="mt-3">
+            <TrackedObjectsList
+              items={objects.items}
+              selectedIcao24={selectedTraffic?.icao24}
+              onSelect={(item) => {
+                const ac = traffic.aircraft.find((row) => row.icao24 === item.icao24);
+                if (ac) selectTraffic(ac);
+              }}
+              onUntrack={objects.untrack}
+            />
+          </div>
+        )}
       </Card>
 
       <div className="absolute left-3 top-3 z-10 hidden space-y-2 md:block">
@@ -209,6 +252,17 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
                 ))}
               </div>
               <div className="mt-3">
+                <TrackedObjectsList
+                  items={objects.items}
+                  selectedIcao24={selectedTraffic?.icao24}
+                  onSelect={(item) => {
+                    const ac = traffic.aircraft.find((row) => row.icao24 === item.icao24);
+                    if (ac) selectTraffic(ac);
+                  }}
+                  onUntrack={objects.untrack}
+                />
+              </div>
+              <div className="mt-3">
                 <AddFlightDialog />
               </div>
             </div>
@@ -259,13 +313,25 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
                   altitude={trafficAlt!}
                   speed={trafficSpeed!}
                   locale={locale}
+                  tracked={objects.byIcao.get(selectedTraffic.icao24)}
+                  onSave={async (ac) => {
+                    await objects.save({
+                      icao24: ac.icao24,
+                      callsign: ac.callsign,
+                      operator: ac.airlineName,
+                      airlineIata: ac.airlineIata,
+                    });
+                  }}
+                  onUntrack={objects.untrack}
                 />
               ) : selected ? (
                 <>
                   <div className="flex items-center gap-2">
                     <AirlineLogo
+                      size="md"
                       iata={selected.flight.airline?.iata ?? selected.flight.airlineIata}
                       name={selected.flight.airline?.name}
+                      className="bg-transparent"
                     />
                     <div className="min-w-0">
                       <p className="text-sm text-muted-foreground">{selected.flight.airline?.name}</p>
@@ -344,7 +410,7 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
               aria-label={t("map.expandDetail")}
               title={
                 selectedTraffic
-                  ? selectedTraffic.callsign?.trim() || selectedTraffic.icao24.toUpperCase()
+                  ? displayCallsign(selectedTraffic.callsign, selectedTraffic.icao24.toUpperCase())
                   : selected
                     ? displayFlightNumber(selected.flight.flightNumber)
                     : t("map.expandDetail")
@@ -355,7 +421,7 @@ export function LiveMapView({ flights: initial }: { flights: UserFlightView[] })
               <ChevronRight className="size-4 md:hidden" />
               <span className="text-xs font-medium leading-none md:[writing-mode:vertical-rl] md:rotate-180">
                 {selectedTraffic
-                  ? selectedTraffic.callsign?.trim() || selectedTraffic.icao24.slice(0, 6).toUpperCase()
+                  ? displayCallsign(selectedTraffic.callsign, selectedTraffic.icao24.slice(0, 6).toUpperCase())
                   : selected
                     ? displayFlightNumber(selected.flight.flightNumber)
                     : t("map.expandDetail")}
@@ -373,29 +439,42 @@ function TrafficDetailCard({
   altitude,
   speed,
   locale,
+  tracked,
+  onSave,
+  onUntrack,
 }: {
   aircraft: ViewportTrafficAircraft;
   altitude: { primary: string; secondary: string };
   speed: { primary: string; secondary: string };
   locale: Locale;
+  tracked?: TrackedAircraftView | null;
+  onSave: (ac: ViewportTrafficAircraft) => Promise<void>;
+  onUntrack: (id: string) => Promise<void>;
 }) {
   const t = useT();
-  const callsign = aircraft.callsign?.trim() || aircraft.icao24.slice(0, 6).toUpperCase();
+  const callsign = displayCallsign(aircraft.callsign, aircraft.icao24.slice(0, 6).toUpperCase());
   return (
     <>
-      <div className="flex items-center gap-2">
-        <AirlineLogo iata={aircraft.airlineIata} name={aircraft.airlineName} />
+      <div className="flex items-center gap-3">
+        <AirlineLogo
+          size="md"
+          iata={aircraft.airlineIata}
+          name={aircraft.airlineName ?? callsign}
+          className="bg-transparent"
+        />
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">{aircraft.airlineName ?? "—"}</p>
-          <p className="text-xl font-semibold">{callsign}</p>
+          <p className="text-xl font-semibold leading-snug">{callsign}</p>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
         <Metric label={t("flight.altitude")} value={altitude.primary} secondary={altitude.secondary} />
         <Metric label={t("flight.speed")} value={speed.primary} secondary={speed.secondary} />
         <Metric label={t("flight.heading")} value={formatHeading(aircraft.heading, locale)} />
+        <Metric label={t("flight.icao24")} value={aircraft.icao24.toUpperCase()} />
       </div>
       <p className="mt-3 text-xs text-muted-foreground">{t("map.trafficSnapshot")}</p>
+      <TrackObjectButton aircraft={aircraft} tracked={tracked} onSave={onSave} onUntrack={onUntrack} />
     </>
   );
 }

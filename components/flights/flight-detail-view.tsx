@@ -51,7 +51,7 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
 
       <div className="h-64 overflow-hidden rounded-2xl md:h-80">
         {m.origin && m.dest ? (
-          <FlightMap className="h-full w-full" flights={[toMapFlight(flight)]} showLocate />
+          <FlightMap className="h-full w-full" flights={[toMapFlight(flight)]} showLocate followCamera />
         ) : (
           <Card className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {t("flight.needAirports")}

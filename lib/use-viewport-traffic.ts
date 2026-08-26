@@ -35,17 +35,41 @@ const EMPTY: ViewportTrafficState = {
   count: 0,
 };
 
+type TrafficBucket = {
+  state: ViewportTrafficState;
+  cooldownUntil: number;
+  intervalMs: number;
+};
+
+const buckets = new Map<string, TrafficBucket>();
+
 function tabHidden() {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
 
-export function useViewportTraffic(enabled: boolean, bounds: ViewportBounds | null) {
-  const [state, setState] = useState<ViewportTrafficState>(EMPTY);
+export function useViewportTraffic(
+  enabled: boolean,
+  bounds: ViewportBounds | null,
+  cacheKey?: string,
+) {
+  const [state, setState] = useState<ViewportTrafficState>(
+    () => (cacheKey ? buckets.get(cacheKey)?.state : undefined) ?? EMPTY,
+  );
   const boundsRef = useRef(bounds);
   const intervalRef = useRef(90_000);
   const cooldownUntilRef = useRef(0);
   const tickRef = useRef<() => void>(() => {});
+  const abortInflightRef = useRef<() => void>(() => {});
   boundsRef.current = bounds;
+
+  useEffect(() => {
+    if (!cacheKey || !enabled || state.status === "off") return;
+    buckets.set(cacheKey, {
+      state,
+      cooldownUntil: cooldownUntilRef.current,
+      intervalMs: intervalRef.current,
+    });
+  }, [cacheKey, enabled, state]);
 
   useEffect(() => {
     if (!enabled) {
@@ -54,10 +78,17 @@ export function useViewportTraffic(enabled: boolean, bounds: ViewportBounds | nu
       return;
     }
 
+    const cached = cacheKey ? buckets.get(cacheKey) : undefined;
+    if (cached) {
+      intervalRef.current = cached.intervalMs;
+      cooldownUntilRef.current = cached.cooldownUntil;
+      setState(cached.state);
+    }
+
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let inflight: AbortController | null = null;
-    let exhausted = false;
+    let exhausted = cached?.state.status === "exhausted";
 
     const clearTimer = () => {
       if (timer != null) {
@@ -100,7 +131,10 @@ export function useViewportTraffic(enabled: boolean, bounds: ViewportBounds | nu
         return;
       }
 
-      if (inflight) return;
+      if (inflight) {
+        schedule(250);
+        return;
+      }
       const ac = new AbortController();
       inflight = ac;
       try {
@@ -195,6 +229,12 @@ export function useViewportTraffic(enabled: boolean, bounds: ViewportBounds | nu
       }
     };
 
+    abortInflightRef.current = () => {
+      if (!inflight) return;
+      inflight.abort();
+      inflight = null;
+    };
+
     tickRef.current = () => {
       void tick();
     };
@@ -218,15 +258,19 @@ export function useViewportTraffic(enabled: boolean, bounds: ViewportBounds | nu
     return () => {
       cancelled = true;
       tickRef.current = () => {};
+      abortInflightRef.current = () => {};
       clearTimer();
       inflight?.abort();
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [enabled]);
+  }, [enabled, cacheKey]);
 
   useEffect(() => {
     if (!enabled || !bounds) return;
-    const handle = setTimeout(() => tickRef.current(), 400);
+    const handle = setTimeout(() => {
+      abortInflightRef.current();
+      tickRef.current();
+    }, 400);
     return () => clearTimeout(handle);
   }, [enabled, bounds]);
 

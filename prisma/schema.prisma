@@ -47,6 +47,7 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   flights     UserFlight[]
+  trackedAircraft TrackedAircraft[]
   pushSubs    PushSubscription[]
   notifications Notification[]
   notifPref   NotificationPreference?
@@ -191,6 +192,25 @@ model PushSubscription {
   @@index([userId])
 }
 
+model TrackedAircraft {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  icao24         String
+  callsign       String
+  operator       String?
+  airlineIata    String?
+  lastOnGround   Boolean?
+  lastSeenAt     DateTime?
+  lastAirborneAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, icao24])
+  @@index([userId])
+  @@index([icao24])
+}
+
 model NotificationPreference {
   id           String  @id @default(cuid())
   userId       String  @unique
@@ -199,6 +219,7 @@ model NotificationPreference {
   gateChanges  Boolean @default(true)
   delaysStatus Boolean @default(true)
   preflight2h  Boolean @default(true)
+  objectAlerts Boolean @default(true)
 }
 
 model Notification {
