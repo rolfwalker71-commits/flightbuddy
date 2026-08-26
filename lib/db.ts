@@ -77,7 +77,7 @@ export async function safeUserFlightUpdate(
   id: string,
   data: Prisma.UserFlightUncheckedUpdateInput,
 ): Promise<void> {
-  let patch = pickKnownModelData("UserFlight", data as Record<string, unknown>) as Prisma.UserFlightUncheckedUpdateInput;
+  const patch = pickKnownModelData("UserFlight", data as Record<string, unknown>) as Prisma.UserFlightUncheckedUpdateInput;
   if (!Object.keys(patch).length) return;
 
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -125,7 +125,7 @@ export async function hydrateTrackDaily<T extends { id: string; trackDaily?: boo
 
 /** Write only fields this PrismaClient accepts so a stale singleton cannot crash the page. */
 export async function safeFlightUpdate(flightId: string, data: Prisma.FlightUncheckedUpdateInput): Promise<void> {
-  let patch = pickKnownModelData("Flight", data as Record<string, unknown>) as Prisma.FlightUncheckedUpdateInput;
+  const patch = pickKnownModelData("Flight", data as Record<string, unknown>) as Prisma.FlightUncheckedUpdateInput;
   if (!Object.keys(patch).length) return;
 
   for (let attempt = 0; attempt < 8; attempt++) {

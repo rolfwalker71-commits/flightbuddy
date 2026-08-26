@@ -531,7 +531,7 @@ async function fetchAeroSearchPath(
   priority: "user" | "poll",
 ): Promise<{ res: Response; text: string; latencyMs: number; used: string } | { reason: AeroSearchReason }> {
   if (!(await acquireAeroSlot(priority))) return { reason: "rate_limited" };
-  let used = path;
+  const used = path;
   let { res, text, latencyMs } = await fetchAero(used);
   if (res.status === 429 && priority === "user") {
     await sleep(1_250);
