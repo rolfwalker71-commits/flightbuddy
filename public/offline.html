@@ -2,11 +2,22 @@
 <html lang="de">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>FlightBuddy offline</title>
     <style>
-      body { background: #0B0D10; color: #f4f4f5; font-family: Inter, system-ui, sans-serif; display: grid; min-height: 100vh; place-items: center; margin: 0; }
-      main { text-align: center; padding: 2rem; }
+      html, body { margin: 0; overflow-x: hidden; }
+      body {
+        background: #0B0D10;
+        color: #f4f4f5;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        display: grid;
+        min-height: 100dvh;
+        place-items: center;
+        padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left));
+      }
+      main { text-align: center; }
       p { color: #a1a1aa; }
     </style>
   </head>

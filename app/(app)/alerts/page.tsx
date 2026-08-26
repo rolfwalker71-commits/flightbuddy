@@ -30,7 +30,7 @@ export default async function AlertsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl font-semibold tracking-tight">{t(locale, "alerts.title")}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{t(locale, "alerts.title")}</h1>
       {alerts.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">{t(locale, "alerts.empty")}</Card>
       )}

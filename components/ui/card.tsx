@@ -1,9 +1,9 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-/** Flat editorial surface — hairline border, no lift shadow. */
+/** Detached card — rounded-2xl, hairline, lift shadow. */
 export const cardClassName =
-  "rounded-xl border border-border bg-card text-card-foreground";
+  "rounded-2xl border border-border bg-card text-card-foreground shadow-card";
 
 /** Nested instrument tile (metrics, inset rows). */
 export const tileClassName = "rounded-xl border border-border bg-muted";

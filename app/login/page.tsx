@@ -29,7 +29,10 @@ export default async function LoginPage() {
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent to-background/80" />
       </div>
-      <div className="flex flex-col justify-center px-6 py-10 sm:px-12">
+      <div
+        className="flex flex-col justify-center px-6 py-10 sm:px-12"
+        style={{ paddingTop: "max(2.5rem, var(--app-header-pad))" }}
+      >
         <div className="mx-auto w-full max-w-sm">
           <h1 className="text-3xl font-semibold tracking-tight">
             Flight<span className="text-primary">Buddy</span>

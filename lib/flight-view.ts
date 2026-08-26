@@ -1,6 +1,10 @@
 import type { Airline, Airport, Flight, FlightPosition, UserFlight } from "@prisma/client";
 import { differenceInMinutes, format } from "date-fns";
 import { flightProgress, headingAlongGreatCircle, haversineMiles, type LatLon } from "./geo";
+import {
+  flightNeedsInterpolationClock,
+  interpolateAirbornePosition,
+} from "./flight-interpolate";
 import { isLiveStatus, isPastStatus } from "./flight-status";
 import { displayFlightNumber } from "./utils";
 
@@ -21,23 +25,52 @@ export function filterFlights(rows: UserFlightView[], tab: "upcoming" | "live" |
   });
 }
 
-export function flightMetrics(flight: FlightWithRelations) {
+export function interpolateInput(flight: FlightWithRelations, now?: Date) {
+  return {
+    origin: flight.departureAirport,
+    dest: flight.arrivalAirport,
+    lastFix:
+      flight.lastLat != null && flight.lastLon != null
+        ? { lat: flight.lastLat, lon: flight.lastLon }
+        : null,
+    lastFixAt: flight.lastPositionAt,
+    scheduledDep: flight.scheduledDep,
+    estimatedDep: flight.estimatedDep,
+    actualDep: flight.actualDep,
+    scheduledArr: flight.scheduledArr,
+    estimatedArr: flight.estimatedArr,
+    actualArr: flight.actualArr,
+    status: flight.status,
+    now,
+  };
+}
+
+export function flightNeedsLiveClock(flight: FlightWithRelations, now?: Date) {
+  return flightNeedsInterpolationClock(interpolateInput(flight, now), now);
+}
+
+export function flightMetrics(flight: FlightWithRelations, now = new Date()) {
   const origin = flight.departureAirport;
   const dest = flight.arrivalAirport;
-  const current =
-    flight.lastLat != null && flight.lastLon != null
-      ? { lat: flight.lastLat, lon: flight.lastLon }
-      : null;
+  const resolved = interpolateAirbornePosition(interpolateInput(flight, now));
+  const current = resolved.position;
   const scheduledDep = asDate(flight.scheduledDep);
   const scheduledArr = asDate(flight.scheduledArr);
+  const estimatedDep = asDate(flight.estimatedDep);
+  const estimatedArr = asDate(flight.estimatedArr);
   const actualDep = asDate(flight.actualDep);
+  const actualArr = asDate(flight.actualArr);
   const progress = flightProgress({
     origin,
     dest,
     current,
     scheduledDep,
     scheduledArr,
+    estimatedDep,
+    estimatedArr,
     actualDep,
+    actualArr,
+    now,
   });
   const remainingMiles =
     current && dest ? haversineMiles(current, dest) : dest && origin ? haversineMiles(origin, dest) * (1 - progress) : null;
@@ -45,7 +78,16 @@ export function flightMetrics(flight: FlightWithRelations) {
     scheduledArr && scheduledDep ? differenceInMinutes(scheduledArr, scheduledDep) : null;
   const remainingMin =
     durationMin != null ? Math.max(0, Math.round(durationMin * (1 - progress))) : null;
-  return { progress, remainingMiles, remainingMin, durationMin, origin, dest, current };
+  return {
+    progress,
+    remainingMiles,
+    remainingMin,
+    durationMin,
+    origin,
+    dest,
+    current,
+    positionEstimated: resolved.estimated,
+  };
 }
 
 export function flightTrack(flight: Pick<FlightWithRelations, "positions" | "lastLat" | "lastLon">): LatLon[] {
@@ -70,7 +112,10 @@ export function flightTelemetry(flight: FlightWithRelations, metrics = flightMet
     isLiveStatus(flight.status) || metrics.current != null;
   let heading = flight.lastHeading ?? null;
   let headingEstimated = false;
-  if (heading == null && canEstimate && metrics.origin && metrics.dest) {
+  if (metrics.positionEstimated && metrics.origin && metrics.dest) {
+    heading = headingAlongGreatCircle(metrics.origin, metrics.dest, metrics.progress);
+    headingEstimated = true;
+  } else if (heading == null && canEstimate && metrics.origin && metrics.dest) {
     heading = headingAlongGreatCircle(metrics.origin, metrics.dest, metrics.progress);
     headingEstimated = true;
   }
@@ -102,15 +147,15 @@ export function flightTelemetry(flight: FlightWithRelations, metrics = flightMet
   };
 }
 
-export function toMapFlight(flight: FlightWithRelations, opts?: { active?: boolean }) {
-  const m = flightMetrics(flight);
+export function toMapFlight(flight: FlightWithRelations, opts?: { active?: boolean; now?: Date }) {
+  const m = flightMetrics(flight, opts?.now);
   return {
     id: flight.id,
     from: m.origin,
     to: m.dest,
     current: m.current,
     progress: m.progress,
-    heading: flight.lastHeading,
+    heading: m.positionEstimated ? null : flight.lastHeading,
     label: displayFlightNumber(flight.flightNumber),
     track: flightTrack(flight),
     icao24: flight.icao24?.toLowerCase() ?? null,

@@ -108,7 +108,7 @@ export function SettingsPanel({
 
   return (
     <div className="space-y-5">
-      <h1 className="text-3xl font-semibold tracking-tight">{t("settings.title")}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{t("settings.title")}</h1>
 
       <Card className="flex items-center gap-3 p-4">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-sm font-medium">
@@ -195,16 +195,16 @@ export function SettingsPanel({
           </div>
           <div className="space-y-2">
             <p className="text-sm">{t("settings.mapStyle")}</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1 rounded-2xl bg-muted p-1">
               {MAP_STYLE_IDS.map((id) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => void saveAppearance({ mapStyle: id })}
-                  className={`min-h-11 rounded-full px-3 text-sm ${
+                  className={`min-h-10 rounded-full px-3 text-sm leading-none ${
                     mapStyle === id
-                      ? "bg-muted text-foreground shadow-sm"
-                      : "bg-background text-muted-foreground"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground"
                   }`}
                 >
                   {t(MAP_STYLES[id].labelKey)}

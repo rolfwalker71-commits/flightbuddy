@@ -4,6 +4,24 @@
 
 html {
   font-size: 112.5%;
+  overflow-x: hidden;
+}
+
+:root {
+  --app-header-pad: max(1.5rem, env(safe-area-inset-top, 0px));
+  --dock-pad-top: 0.375rem;
+  --dock-inner: 3.25rem;
+  --dock-pad-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  --dock-pad-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  --dock-pad-right: max(0.75rem, env(safe-area-inset-right, 0px));
+  --dock-offset: calc(var(--dock-pad-top) + var(--dock-inner) + var(--dock-pad-bottom));
+  --app-main-pb: calc(var(--dock-offset) + 0.75rem);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --app-main-pb: 2.5rem;
+  }
 }
 
 @layer base {
@@ -66,11 +84,13 @@ html {
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow-x: hidden;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
   input[type="date"]:not([data-empty="true"]:not(:focus)),
-  input[type="datetime-local"]:not([data-empty="true"]:not(:focus)) {
+  input[type="datetime-local"]:not([data-empty="true"]:not(:focus)),
+  input[type="time"]:not([data-empty="true"]:not(:focus)) {
     color: hsl(var(--foreground));
   }
 }

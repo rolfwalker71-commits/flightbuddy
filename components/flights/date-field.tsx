@@ -123,7 +123,7 @@ function MondayCalendar({
               type="button"
               onClick={() => onChange(cell.iso)}
               className={cn(
-                "flex h-9 items-center justify-center rounded-full text-sm",
+                "flex min-h-11 items-center justify-center rounded-full text-sm",
                 !cell.inMonth && "text-muted-foreground/60",
                 isSelected && "bg-primary text-primary-foreground",
                 !isSelected && isToday && "ring-1 ring-primary",
@@ -191,7 +191,7 @@ export function DateField({
       <div className="relative">
         <button
           type="button"
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          className="absolute left-1 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center text-muted-foreground"
           onClick={() => setOpen((v) => !v)}
           aria-label={openLabel}
           aria-expanded={open}
@@ -205,7 +205,7 @@ export function DateField({
           inputMode="numeric"
           autoComplete="off"
           placeholder={datePlaceholder(units, locale)}
-          className="pl-10"
+          className="pl-12"
           value={text}
           onChange={(e) => {
             const next = e.target.value;

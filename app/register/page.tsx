@@ -9,7 +9,10 @@ export default async function RegisterPage() {
   if (session?.user) redirect("/");
   const { locale } = await getRequestPrefs();
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
+    <div
+      className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6"
+      style={{ paddingTop: "var(--app-header-pad)" }}
+    >
       <h1 className="text-3xl font-semibold tracking-tight">{t(locale, "auth.registerTitle")}</h1>
       <p className="mt-2 text-muted-foreground">{t(locale, "auth.registerSubtitle")}</p>
       <RegisterForm />

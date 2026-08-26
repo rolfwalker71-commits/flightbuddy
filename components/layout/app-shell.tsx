@@ -50,12 +50,25 @@ export function AppShell({
       </aside>
 
       <main className="md:pl-56">
-        <div className="mx-auto max-w-6xl px-4 pb-28 pt-6 md:px-8 md:pb-10">{children}</div>
+        <div
+          className="mx-auto max-w-6xl px-4 md:px-8"
+          style={{
+            paddingTop: "var(--app-header-pad)",
+            paddingBottom: "var(--app-main-pb)",
+          }}
+        >
+          {children}
+        </div>
       </main>
 
       <nav
         className="fixed inset-x-0 bottom-0 z-40 md:hidden"
-        style={{ padding: "max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right))" }}
+        style={{
+          paddingTop: "var(--dock-pad-top)",
+          paddingBottom: "var(--dock-pad-bottom)",
+          paddingLeft: "var(--dock-pad-left)",
+          paddingRight: "var(--dock-pad-right)",
+        }}
       >
         <div className="flex items-center justify-around rounded-2xl border border-border bg-card p-1 shadow-dock">
           {mobileNav.map((item) => {

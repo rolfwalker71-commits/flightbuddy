@@ -8,9 +8,11 @@ import { statusText } from "@/lib/i18n/format";
 export function StatusBadge({
   status,
   delayMinutes,
+  className,
 }: {
   status: FlightStatus;
   delayMinutes?: number | null;
+  className?: string;
 }) {
   const { locale } = usePrefs();
   const t = useT();
@@ -18,24 +20,24 @@ export function StatusBadge({
 
   if (status === FlightStatus.EN_ROUTE || status === FlightStatus.DEPARTED) {
     return (
-      <Badge variant="live">
+      <Badge variant="live" className={className}>
         <span className="mr-1.5 size-1.5 rounded-full bg-primary" />
         {label}
       </Badge>
     );
   }
   if (status === FlightStatus.DELAYED) {
-    return <Badge variant="warning">{label}</Badge>;
+    return <Badge variant="warning" className={className}>{label}</Badge>;
   }
   if (status === FlightStatus.CANCELLED || status === FlightStatus.DIVERTED) {
-    return <Badge variant="destructive">{label}</Badge>;
+    return <Badge variant="destructive" className={className}>{label}</Badge>;
   }
   if (status === FlightStatus.LANDED || status === FlightStatus.SCHEDULED || status === FlightStatus.BOARDING) {
     return (
-      <Badge variant="success">
+      <Badge variant="success" className={className}>
         {status === FlightStatus.SCHEDULED ? t("status.onTime") : label}
       </Badge>
     );
   }
-  return <Badge>{label}</Badge>;
+  return <Badge className={className}>{label}</Badge>;
 }

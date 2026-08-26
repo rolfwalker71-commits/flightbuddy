@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLiveFlights } from "@/lib/use-live-flights";
+import { useLiveClock } from "@/lib/use-live-clock";
 import Link from "next/link";
 import { Bell, Plane } from "lucide-react";
 import { initials } from "@/lib/utils";
-import { filterFlights, toMapFlight, type UserFlightView } from "@/lib/flight-view";
+import { filterFlights, flightNeedsLiveClock, toMapFlight, type UserFlightView } from "@/lib/flight-view";
 import { FlightCard } from "./flight-card";
 import { AddFlightDialog } from "./add-flight-dialog";
 import { HomeHeroMap } from "./home-hero-map";
@@ -23,7 +25,7 @@ const tabs = [
 
 export function Dashboard({
   userName,
-  flights,
+  flights: initial,
   unreadAlerts,
   stats,
   tracked = [],
@@ -36,6 +38,9 @@ export function Dashboard({
 }) {
   const { locale } = usePrefs();
   const t = useT();
+  const flights = useLiveFlights(initial);
+  const nowMs = useLiveClock(flights.some((row) => flightNeedsLiveClock(row.flight)));
+  const now = new Date(nowMs);
   const [tab, setTab] = useState<"upcoming" | "live" | "past">("upcoming");
   const visible = useMemo(() => filterFlights(flights, tab), [flights, tab]);
   const live = flights.filter((f) => isLiveStatus(f.flight.status));
@@ -48,11 +53,12 @@ export function Dashboard({
             {greeting(locale)}
             {userName ? `, ${userName.split(" ")[0]}` : ""}
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight">{t("home.title")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{t("home.title")}</h1>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/alerts"
+            aria-label={t("nav.alerts")}
             className="relative flex h-11 w-11 items-center justify-center rounded-full bg-card ring-1 ring-border md:hidden"
           >
             <Bell className="size-4" />
@@ -86,6 +92,21 @@ export function Dashboard({
         ))}
       </div>
 
+      <div className="grid grid-cols-3 gap-2 lg:hidden">
+        <Card className="p-3 text-center">
+          <p className="text-lg font-semibold">{stats.flights}</p>
+          <p className="text-xs text-muted-foreground">{t("home.flights")}</p>
+        </Card>
+        <Card className="p-3 text-center">
+          <p className="text-lg font-semibold">{Math.round(stats.hours)}h</p>
+          <p className="text-xs text-muted-foreground">{t("home.airtime")}</p>
+        </Card>
+        <Card className="p-3 text-center">
+          <p className="text-lg font-semibold">{stats.countries}</p>
+          <p className="text-xs text-muted-foreground">{t("home.countries")}</p>
+        </Card>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">
         <div className="space-y-3">
           {visible.length === 0 ? (
@@ -104,7 +125,7 @@ export function Dashboard({
         <aside className="hidden space-y-3 lg:block">
           <Card className="overflow-hidden p-0">
             <HomeHeroMap
-              flights={live.slice(0, 4).map((row) => toMapFlight(row.flight))}
+              flights={live.slice(0, 4).map((row) => toMapFlight(row.flight, { now }))}
               tracked={tracked}
             />
           </Card>
@@ -133,7 +154,10 @@ export function Dashboard({
         </aside>
       </div>
 
-      <div className="fixed bottom-24 right-4 z-30 md:hidden">
+      <div
+        className="fixed right-4 z-30 md:hidden"
+        style={{ bottom: "calc(var(--dock-offset) + 0.75rem)" }}
+      >
         <AddFlightDialog triggerLabel={t("home.add")} />
       </div>
     </div>

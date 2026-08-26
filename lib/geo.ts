@@ -61,9 +61,28 @@ export function interpolateGreatCircle(a: LatLon, b: LatLon, steps = 64): [numbe
 }
 
 export function pointAlongGreatCircle(a: LatLon, b: LatLon, fraction: number): LatLon {
-  const pts = interpolateGreatCircle(a, b, 128);
-  const idx = Math.min(pts.length - 1, Math.max(0, Math.round(fraction * (pts.length - 1))));
-  return { lon: pts[idx][0], lat: pts[idx][1] };
+  const f = Math.min(1, Math.max(0, fraction));
+  const φ1 = toRad(a.lat);
+  const λ1 = toRad(a.lon);
+  const φ2 = toRad(b.lat);
+  const λ2 = toRad(b.lon);
+  const Δ =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.sin((φ2 - φ1) / 2) ** 2 +
+          Math.cos(φ1) * Math.cos(φ2) * Math.sin((λ2 - λ1) / 2) ** 2,
+      ),
+    );
+  if (Δ === 0 || !Number.isFinite(Δ)) return a;
+  const A = Math.sin((1 - f) * Δ) / Math.sin(Δ);
+  const B = Math.sin(f * Δ) / Math.sin(Δ);
+  const x = A * Math.cos(φ1) * Math.cos(λ1) + B * Math.cos(φ2) * Math.cos(λ2);
+  const y = A * Math.cos(φ1) * Math.sin(λ1) + B * Math.cos(φ2) * Math.sin(λ2);
+  const z = A * Math.sin(φ1) + B * Math.sin(φ2);
+  const φ = Math.atan2(z, Math.sqrt(x * x + y * y));
+  const λ = Math.atan2(y, x);
+  return { lat: toDeg(φ), lon: toDeg(λ) };
 }
 
 /** Instantaneous course (0=N, 90=E) at `fraction` along the geodesic A→B. */
@@ -110,7 +129,10 @@ export function flightProgress(opts: {
   current?: LatLon | null;
   scheduledDep?: Date | null;
   scheduledArr?: Date | null;
+  estimatedDep?: Date | null;
+  estimatedArr?: Date | null;
   actualDep?: Date | null;
+  actualArr?: Date | null;
   now?: Date;
 }) {
   const now = opts.now ?? new Date();
@@ -119,8 +141,8 @@ export function flightProgress(opts: {
     const remaining = haversineNm(opts.current, opts.dest);
     if (total > 0) return Math.min(0.98, Math.max(0.02, 1 - remaining / total));
   }
-  const start = opts.actualDep ?? opts.scheduledDep;
-  const end = opts.scheduledArr;
+  const start = opts.actualDep ?? opts.estimatedDep ?? opts.scheduledDep;
+  const end = opts.actualArr ?? opts.estimatedArr ?? opts.scheduledArr;
   if (!start || !end) return 0;
   const span = end.getTime() - start.getTime();
   if (span <= 0) return 0;

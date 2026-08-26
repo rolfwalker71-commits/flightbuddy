@@ -219,8 +219,16 @@ export async function pollFlight(flightId: string) {
         }
       }
     }
-    if (!gotFix && flight.scheduledArr && flight.scheduledArr < new Date()) {
-      nextStatus = FlightStatus.LANDED;
+    if (
+      !gotFix &&
+      nextStatus !== FlightStatus.LANDED &&
+      nextStatus !== FlightStatus.CANCELLED &&
+      nextStatus !== FlightStatus.DIVERTED
+    ) {
+      const eta = actualArr ?? estimatedArr ?? flight.scheduledArr;
+      if (eta && eta < new Date()) {
+        nextStatus = FlightStatus.LANDED;
+      }
     }
   }
 
@@ -233,6 +241,8 @@ export async function pollFlight(flightId: string) {
     estimatedArr,
     lastLat: flight.lastLat,
     lastLon: flight.lastLon,
+    lastPositionAt: flight.lastPositionAt,
+    actualArr,
     departureAirport: flight.departureAirport,
     arrivalAirport: flight.arrivalAirport,
   };

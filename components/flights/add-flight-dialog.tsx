@@ -346,6 +346,7 @@ export function AddFlightDialog({ triggerLabel }: { triggerLabel?: string }) {
                   <Input
                     id="manual-dep"
                     type="time"
+                    data-empty={draft.depTime ? "false" : "true"}
                     value={draft.depTime}
                     onChange={(e) => setDraft((d) => ({ ...d, depTime: e.target.value }))}
                   />
@@ -355,6 +356,7 @@ export function AddFlightDialog({ triggerLabel }: { triggerLabel?: string }) {
                   <Input
                     id="manual-arr"
                     type="time"
+                    data-empty={draft.arrTime ? "false" : "true"}
                     value={draft.arrTime}
                     onChange={(e) => setDraft((d) => ({ ...d, arrTime: e.target.value }))}
                   />

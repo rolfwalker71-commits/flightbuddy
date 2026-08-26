@@ -4,7 +4,14 @@ import { StatusBadge } from "./status-badge";
 import { DeleteFlightButton } from "./delete-flight-button";
 import { RoutePlane } from "./route-plane";
 import { displayFlightNumber } from "@/lib/utils";
-import { flightMetrics, flightTelemetry, toMapFlight, type UserFlightView } from "@/lib/flight-view";
+import {
+  flightMetrics,
+  flightNeedsLiveClock,
+  flightTelemetry,
+  toMapFlight,
+  type UserFlightView,
+} from "@/lib/flight-view";
+import { useLiveClock } from "@/lib/use-live-clock";
 import { isLiveStatus } from "@/lib/flight-status";
 import { FlightMap } from "@/components/map/flight-map";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
@@ -28,7 +35,9 @@ export function FlightCard({
   const t = useT();
   const { flight } = row;
   const live = isLiveStatus(flight.status);
-  const m = flightMetrics(flight);
+  const nowMs = useLiveClock(flightNeedsLiveClock(flight));
+  const now = new Date(nowMs);
+  const m = flightMetrics(flight, now);
   const tel = flightTelemetry(flight, m);
   const from = flight.departureAirport?.iata ?? "—";
   const to = flight.arrivalAirport?.iata ?? "—";
@@ -48,13 +57,13 @@ export function FlightCard({
     <Card className="relative overflow-hidden p-4 transition-colors hover:bg-muted">
       <Link
         href={`/flights/${flight.id}`}
-        className="absolute inset-0 z-0 rounded-xl"
+        className="absolute inset-0 z-0 rounded-2xl"
         aria-label={label}
       />
-      <div className="relative z-10 flex items-center justify-between gap-3">
+      <div className="relative z-10 flex items-center justify-between gap-2 md:gap-3">
         <div className="pointer-events-none min-w-0 text-sm text-muted-foreground">
           <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-lg font-semibold text-foreground">{label}</span>
+            <span className="break-words text-lg font-semibold text-foreground">{label}</span>
             <span className="break-words text-base font-semibold text-foreground">
               {flight.airline?.name ?? flight.airlineIata}
             </span>
@@ -72,9 +81,13 @@ export function FlightCard({
             variant="compact"
           />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="pointer-events-none">
-            <StatusBadge status={flight.status} delayMinutes={flight.delayMinutes} />
+        <div className="flex shrink-0 items-center gap-1 md:gap-2">
+          <div className="pointer-events-none max-w-[6.5rem] md:max-w-none">
+            <StatusBadge
+              status={flight.status}
+              delayMinutes={flight.delayMinutes}
+              className="h-auto max-w-full whitespace-normal text-center line-clamp-2"
+            />
           </div>
           <TrackDailyToggle
             key={flight.id}
@@ -84,14 +97,15 @@ export function FlightCard({
           />
           <DeleteFlightButton flightId={flight.id} flightNumber={flight.flightNumber} variant="icon" />
           <div className="pointer-events-none">
-            <AirlineLogo size="md" iata={airlineIata} name={flight.airline?.name} />
+            <AirlineLogo size="sm" className="md:hidden" iata={airlineIata} name={flight.airline?.name} />
+            <AirlineLogo size="md" className="hidden md:flex" iata={airlineIata} name={flight.airline?.name} />
           </div>
         </div>
       </div>
 
       <div className="pointer-events-none mt-4 flex items-end justify-between gap-3">
         <div>
-          <p className="text-3xl font-semibold tracking-tight">{from}</p>
+          <p className="break-words text-2xl font-semibold tracking-tight md:text-3xl">{from}</p>
           <p className="text-sm text-muted-foreground">{flight.departureAirport?.city}</p>
           <AirportClock
             role="dep"
@@ -121,7 +135,7 @@ export function FlightCard({
           </p>
         </div>
         <div className="text-right">
-          <p className="text-3xl font-semibold tracking-tight">{to}</p>
+          <p className="break-words text-2xl font-semibold tracking-tight md:text-3xl">{to}</p>
           <p className="text-sm text-muted-foreground">{flight.arrivalAirport?.city}</p>
           <AirportClock
             role="arr"
@@ -142,7 +156,7 @@ export function FlightCard({
           <FlightMap
             interactive={false}
             className="h-36 w-full"
-            flights={[toMapFlight(flight)]}
+            flights={[toMapFlight(flight, { now })]}
           />
         </div>
       )}

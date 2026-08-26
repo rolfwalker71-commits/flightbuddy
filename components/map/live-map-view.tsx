@@ -9,7 +9,14 @@ import { Switch } from "@/components/ui/switch";
 import { StatusBadge } from "@/components/flights/status-badge";
 import { AddFlightDialog } from "@/components/flights/add-flight-dialog";
 import { displayFlightNumber } from "@/lib/utils";
-import { flightTelemetry, toMapFlight, type UserFlightView } from "@/lib/flight-view";
+import {
+  flightMetrics,
+  flightNeedsLiveClock,
+  flightTelemetry,
+  toMapFlight,
+  type UserFlightView,
+} from "@/lib/flight-view";
+import { useLiveClock } from "@/lib/use-live-clock";
 import { isLiveStatus } from "@/lib/flight-status";
 import { cn } from "@/lib/utils";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
@@ -94,6 +101,8 @@ export function LiveMapView({
   const t = useT();
   const { locale, units } = usePrefs();
   const flights = useLiveFlights(initial);
+  const nowMs = useLiveClock(flights.some((row) => flightNeedsLiveClock(row.flight)));
+  const now = new Date(nowMs);
   const objects = useTrackedAircraft(initialTracked);
   const [selectedId, setSelectedId] = useState(flights[0]?.flight.id);
   const [selectedTraffic, setSelectedTraffic] = useState<ViewportTrafficAircraft | null>(null);
@@ -145,11 +154,14 @@ export function LiveMapView({
   const mapFlights = useMemo(
     () =>
       flights.map((row) =>
-        toMapFlight(row.flight, { active: !selectedTraffic && row.flight.id === selected?.flight.id }),
+        toMapFlight(row.flight, {
+          active: !selectedTraffic && row.flight.id === selected?.flight.id,
+          now,
+        }),
       ),
-    [flights, selected, selectedTraffic],
+    [flights, selected, selectedTraffic, now],
   );
-  const selectedTel = selected ? flightTelemetry(selected.flight) : null;
+  const selectedTel = selected ? flightTelemetry(selected.flight, flightMetrics(selected.flight, now)) : null;
   const selectedAltitude = formatAltitudePair(selectedTel?.altitudeFt, locale);
   const selectedSpeed = formatSpeedPair(selectedTel?.speedKts, locale);
   const showDetail = Boolean(selected || selectedTraffic);
@@ -157,7 +169,7 @@ export function LiveMapView({
   const trafficSpeed = selectedTraffic ? formatSpeedPair(selectedTraffic.speedKts, locale) : null;
 
   return (
-    <div className="relative -mx-4 -mt-6 h-[calc(100dvh-5.5rem)] md:-mx-8 md:h-[calc(100dvh-2.5rem)]">
+    <div className="relative -mx-4 h-[calc(100dvh-var(--app-header-pad)-var(--app-main-pb))] md:-mx-8">
       <FlightMap
         className="absolute inset-0"
         flights={mapFlights}
@@ -287,7 +299,7 @@ export function LiveMapView({
       {showDetail && (
         <Card
           className={cn(
-            "absolute z-10 p-0",
+            "absolute z-10 overflow-hidden p-0",
             "bottom-3 left-3 right-3 md:bottom-auto md:left-auto md:right-3 md:top-3",
             detailOpen ? "md:w-80" : "md:w-11",
           )}

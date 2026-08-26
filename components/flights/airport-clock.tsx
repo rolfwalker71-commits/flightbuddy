@@ -72,9 +72,11 @@ function ClockFace({
   const zoneCls =
     size === "sm"
       ? "ml-1 text-[0.7rem] font-normal text-muted-foreground"
-      : "ml-1.5 text-sm font-normal text-muted-foreground";
+      : size === "lg"
+        ? "block text-sm font-normal text-muted-foreground"
+        : "ml-1.5 text-sm font-normal text-muted-foreground";
   return (
-    <p className={timeCls}>
+    <p className={cn(timeCls, size === "lg" && "flex flex-wrap items-baseline gap-x-1.5")}>
       <time dateTime={iso}>{clock}</time>
       {zoneName && <span className={zoneCls}>{zoneName}</span>}
     </p>

@@ -8,7 +8,14 @@ import { DeleteFlightButton } from "@/components/flights/delete-flight-button";
 import { TrackDailyToggle } from "@/components/flights/track-daily-toggle";
 import { RoutePlane } from "@/components/flights/route-plane";
 import { cn, displayFlightNumber } from "@/lib/utils";
-import { flightMetrics, flightTelemetry, toMapFlight, type UserFlightView } from "@/lib/flight-view";
+import {
+  flightMetrics,
+  flightNeedsLiveClock,
+  flightTelemetry,
+  toMapFlight,
+  type UserFlightView,
+} from "@/lib/flight-view";
+import { useLiveClock } from "@/lib/use-live-clock";
 import { Card, tileClassName } from "@/components/ui/card";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { AirportClock } from "@/components/flights/airport-clock";
@@ -31,7 +38,9 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
   const { locale, units } = usePrefs();
   const [row] = useLiveFlights([initial]);
   const { flight } = row;
-  const m = flightMetrics(flight);
+  const nowMs = useLiveClock(flightNeedsLiveClock(flight));
+  const now = new Date(nowMs);
+  const m = flightMetrics(flight, now);
   const tel = flightTelemetry(flight, m);
   const airlineIata = flight.airline?.iata ?? flight.airlineIata;
   const depStand = formatStand(locale, flight.gate, flight.terminal);
@@ -49,9 +58,9 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
         <div className="w-11" />
       </div>
 
-      <div className="h-64 overflow-hidden rounded-2xl md:h-80">
+      <div className="h-52 overflow-hidden rounded-2xl sm:h-56 md:h-80">
         {m.origin && m.dest ? (
-          <FlightMap className="h-full w-full" flights={[toMapFlight(flight)]} showLocate followCamera />
+          <FlightMap className="h-full w-full" flights={[toMapFlight(flight, { now })]} showLocate followCamera />
         ) : (
           <Card className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {t("flight.needAirports")}
@@ -73,19 +82,20 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
               variant="detail"
             />
           </div>
-          <div className="flex min-h-24 min-w-0 flex-1 items-center justify-center">
+          <div className="hidden min-h-24 min-w-0 flex-1 items-center justify-center md:flex">
             <AircraftPhotoCard flightId={flight.id} registration={flight.registration} />
           </div>
-          <AirlineLogo size="lg" iata={airlineIata} name={flight.airline?.name} />
+          <AirlineLogo size="md" className="md:hidden" iata={airlineIata} name={flight.airline?.name} />
+          <AirlineLogo size="lg" className="hidden md:flex" iata={airlineIata} name={flight.airline?.name} />
         </div>
         <div className="mt-5 flex items-end justify-between">
           <div>
-            <p className="text-4xl font-semibold tracking-tight">{flight.departureAirport?.iata ?? "—"}</p>
+            <p className="text-3xl font-semibold tracking-tight md:text-4xl">{flight.departureAirport?.iata ?? "—"}</p>
             <p className="text-sm text-muted-foreground">{flight.departureAirport?.city}</p>
             {depStand && <p className="text-sm text-muted-foreground">{depStand}</p>}
           </div>
           <div className="text-right">
-            <p className="text-4xl font-semibold tracking-tight">{flight.arrivalAirport?.iata ?? "—"}</p>
+            <p className="text-3xl font-semibold tracking-tight md:text-4xl">{flight.arrivalAirport?.iata ?? "—"}</p>
             <p className="text-sm text-muted-foreground">{flight.arrivalAirport?.city}</p>
             {arrStand && <p className="text-sm text-muted-foreground">{arrStand}</p>}
           </div>
@@ -96,6 +106,7 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {t("flight.progress", { n: Math.round(m.progress * 100) })}
+          {m.positionEstimated ? ` · ${t("flight.estimate")}` : ""}
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-4">

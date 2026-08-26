@@ -3,6 +3,7 @@ import { de, enUS } from "date-fns/locale";
 import type { Locale, Units } from "./messages";
 import { t, type MessageKey } from "./messages";
 import { FlightStatus } from "@prisma/client";
+import { interpolateAirbornePosition } from "@/lib/flight-interpolate";
 import { intervalForFlight, isLiveStatus, type PollScheduleInput } from "@/lib/flight-status";
 
 const FT_TO_M = 0.3048;
@@ -257,6 +258,7 @@ export function adsbCaption(
     estimatedDep?: Date | string | null;
     scheduledArr?: Date | string | null;
     estimatedArr?: Date | string | null;
+    actualArr?: Date | string | null;
     departureAirport?: { lat?: number | null; lon?: number | null } | null;
     arrivalAirport?: { lat?: number | null; lon?: number | null } | null;
   },
@@ -273,6 +275,8 @@ export function adsbCaption(
           estimatedArr: flight.estimatedArr,
           lastLat: flight.lastLat,
           lastLon: flight.lastLon,
+          lastPositionAt: flight.lastPositionAt,
+          actualArr: flight.actualArr,
           departureAirport: latLonOf(flight.departureAirport),
           arrivalAirport: latLonOf(flight.arrivalAirport),
         } satisfies PollScheduleInput)
@@ -283,6 +287,28 @@ export function adsbCaption(
     flight.lastAltitudeFt != null ||
     flight.lastVelocityKts != null ||
     flight.lastHeading != null;
+  const interpolated = interpolateAirbornePosition({
+    origin: latLonOf(flight.departureAirport),
+    dest: latLonOf(flight.arrivalAirport),
+    lastFix:
+      flight.lastLat != null && flight.lastLon != null
+        ? { lat: flight.lastLat, lon: flight.lastLon }
+        : null,
+    lastFixAt: flight.lastPositionAt,
+    scheduledDep: flight.scheduledDep,
+    estimatedDep: flight.estimatedDep,
+    actualDep: flight.actualDep,
+    scheduledArr: flight.scheduledArr,
+    estimatedArr: flight.estimatedArr,
+    actualArr: flight.actualArr,
+    status: flight.status,
+  }).estimated;
+  if (interpolated) {
+    if (hasFix && flight.lastPositionAt) {
+      return t(locale, "flight.adsbEstimatedLast", { time: formatRelative(flight.lastPositionAt, locale) });
+    }
+    return t(locale, "flight.adsbEstimated");
+  }
   if (hasFix && flight.lastPositionAt) {
     const ageMs = Date.now() - (asDate(flight.lastPositionAt)?.getTime() ?? 0);
     if (ageMs <= 3 * 60 * 1000 && interval) return t(locale, "flight.adsbLive", { interval });

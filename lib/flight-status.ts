@@ -1,5 +1,6 @@
 import { FlightStatus, PollPhase, type Flight } from "@prisma/client";
 import { env } from "./env";
+import { interpolateAirbornePosition } from "./flight-interpolate";
 import { flightProgress, type LatLon } from "./geo";
 
 export type PollScheduleInput = {
@@ -11,6 +12,8 @@ export type PollScheduleInput = {
   estimatedArr?: Date | string | null;
   lastLat?: number | null;
   lastLon?: number | null;
+  lastPositionAt?: Date | string | null;
+  actualArr?: Date | string | null;
   departureAirport?: LatLon | null;
   arrivalAirport?: LatLon | null;
 };
@@ -123,17 +126,34 @@ function airborneTier(flight: PollScheduleInput, now: Date): AirborneTier {
   const eta = asDate(flight.estimatedArr) ?? asDate(flight.scheduledArr);
   const origin = flight.departureAirport ?? null;
   const dest = flight.arrivalAirport ?? null;
-  const current =
+  const lastFix =
     flight.lastLat != null && flight.lastLon != null
       ? { lat: flight.lastLat, lon: flight.lastLon }
       : null;
+  const current = interpolateAirbornePosition({
+    origin,
+    dest,
+    lastFix,
+    lastFixAt: flight.lastPositionAt,
+    scheduledDep,
+    estimatedDep,
+    actualDep,
+    scheduledArr: asDate(flight.scheduledArr),
+    estimatedArr: asDate(flight.estimatedArr),
+    actualArr: asDate(flight.actualArr),
+    status: flight.status,
+    now,
+  }).position;
   const progress = flightProgress({
     origin,
     dest,
     current,
     scheduledDep,
     scheduledArr: eta ?? asDate(flight.scheduledArr),
+    estimatedDep,
+    estimatedArr: asDate(flight.estimatedArr),
     actualDep,
+    actualArr: asDate(flight.actualArr),
     now,
   });
   const dep = actualDep ?? estimatedDep ?? scheduledDep;

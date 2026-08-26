@@ -18,6 +18,8 @@ function asPollFlight(flight: UserFlightView["flight"]): ClientPollFlight {
     estimatedArr: flight.estimatedArr,
     lastLat: flight.lastLat,
     lastLon: flight.lastLon,
+    lastPositionAt: flight.lastPositionAt,
+    actualArr: flight.actualArr,
     nextPollAt: flight.nextPollAt,
     departureAirport: flight.departureAirport,
     arrivalAirport: flight.arrivalAirport,

@@ -65,7 +65,7 @@ export function LoginForm() {
           />
           <button
             type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="absolute right-1 top-1/2 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center text-muted-foreground"
             onClick={() => setShow((s) => !s)}
             aria-label={show ? t("auth.hidePassword") : t("auth.showPassword")}
           >
