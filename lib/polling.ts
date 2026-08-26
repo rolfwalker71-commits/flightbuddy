@@ -3,6 +3,8 @@ import { isPrismaUnknownArgError, prisma, safeFlightUpdate } from "./db";
 import { notifyUsers } from "./push";
 import { lookupAeroLiveTelemetry, pickAeroForScheduledDep, searchAeroDataBox } from "./aerodatabox";
 import { candidateCallsigns, fetchOpenSkyStates, openSkyToTelemetry } from "./opensky";
+import { fetchFr24LivePosition } from "./fr24";
+import { LIVE_FIX_STALE_MS } from "./flight-interpolate";
 import { nextPollAt, resolvePollPhase, type PollScheduleInput } from "./flight-status";
 import { getUserFlight } from "./flights";
 import { scheduleFlightPoll } from "./queue";
@@ -17,6 +19,7 @@ type LiveFix = {
   icao24?: string | null;
   callsign?: string | null;
   source: string;
+  observedAt?: Date;
 };
 
 async function persistIdentity(
@@ -38,6 +41,7 @@ async function persistIdentity(
 }
 
 async function persistLiveFix(flightId: string, fix: LiveFix) {
+  const observedAt = fix.observedAt && !Number.isNaN(fix.observedAt.getTime()) ? fix.observedAt : new Date();
   await prisma.flightPosition.create({
     data: {
       flightId,
@@ -48,6 +52,7 @@ async function persistLiveFix(flightId: string, fix: LiveFix) {
       heading: fix.heading ?? null,
       onGround: fix.onGround ?? false,
       source: fix.source,
+      recordedAt: observedAt,
     },
   });
   await safeFlightUpdate(flightId, {
@@ -59,7 +64,7 @@ async function persistLiveFix(flightId: string, fix: LiveFix) {
     lastVelocityKts: fix.velocityKts ?? null,
     lastHeading: fix.heading ?? null,
     lastOnGround: fix.onGround ?? false,
-    lastPositionAt: new Date(),
+    lastPositionAt: observedAt,
   });
 }
 
@@ -216,6 +221,45 @@ export async function pollFlight(flightId: string) {
           });
           flight.lastLat = aero.lat;
           flight.lastLon = aero.lon;
+        }
+      }
+    }
+    if (!gotFix) {
+      const lastAt = flight.lastPositionAt;
+      const lastAgeMs = lastAt ? Date.now() - lastAt.getTime() : null;
+      const lastFresh = lastAgeMs != null && lastAgeMs >= 0 && lastAgeMs <= LIVE_FIX_STALE_MS;
+      if (!lastFresh) {
+        const fr24 = await fetchFr24LivePosition({
+          flightId: flight.id,
+          icao24: flight.icao24,
+          callsign: flight.callsign,
+          flightNumber: flight.flightNumber,
+          registration,
+          lastLat: flight.lastLat,
+          lastLon: flight.lastLon,
+        });
+        if (fr24) {
+          nextStatus =
+            fr24.onGround && nextStatus === FlightStatus.EN_ROUTE
+              ? FlightStatus.LANDED
+              : FlightStatus.EN_ROUTE;
+          lastStatusSource = "fr24";
+          gotFix = true;
+          await persistLiveFix(flight.id, {
+            lat: fr24.lat,
+            lon: fr24.lon,
+            altitudeFt: fr24.altitudeFt,
+            velocityKts: fr24.velocityKts,
+            heading: fr24.heading,
+            onGround: fr24.onGround,
+            icao24: fr24.icao24,
+            callsign: fr24.callsign,
+            source: "fr24",
+            observedAt: fr24.observedAt,
+          });
+          flight.lastLat = fr24.lat;
+          flight.lastLon = fr24.lon;
+          flight.lastPositionAt = fr24.observedAt;
         }
       }
     }

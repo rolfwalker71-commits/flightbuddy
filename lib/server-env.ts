@@ -76,3 +76,20 @@ export function hasOpenSkyAuth() {
   const { clientId, clientSecret } = openSkyConfig();
   return Boolean(clientId && clientSecret);
 }
+
+export function fr24Config() {
+  const rawInterval = pick("FR24_MIN_INTERVAL_MS");
+  const parsed = rawInterval ? Number(rawInterval) : NaN;
+  const enabledRaw = pick("FR24_ENABLED");
+  return {
+    // Official SDK / portal name. Never import this module from Client Components.
+    token: pick("FR24_API_TOKEN"),
+    envEnabled: enabledRaw == null || (enabledRaw !== "false" && enabledRaw !== "0"),
+    // Cruise-like default (3 min). Never faster than Explorer 10/min (enforced in lib/fr24.ts).
+    minIntervalMs: Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000,
+  };
+}
+
+export function hasFr24Token() {
+  return Boolean(fr24Config().token);
+}

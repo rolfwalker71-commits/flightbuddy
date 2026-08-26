@@ -20,6 +20,9 @@ type PrefKey = "webPush" | "gateChanges" | "delaysStatus" | "preflight2h" | "obj
 
 type ProviderUsage = {
   configured: boolean;
+  enabled?: boolean;
+  preferenceEnabled?: boolean;
+  envEnabled?: boolean;
   healthy: boolean;
   usedToday: number;
   remaining: number | null;
@@ -48,6 +51,7 @@ export function SettingsPanel({
   apiUsage?: {
     aerodatabox: ProviderUsage;
     opensky: ProviderUsage;
+    fr24?: ProviderUsage;
   };
   canSeed: boolean;
   tracked?: TrackedAircraftView[];
@@ -58,6 +62,7 @@ export function SettingsPanel({
   const [local, setLocal] = useState(prefs);
   const objects = useTrackedAircraft(tracked);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
+  const [fr24On, setFr24On] = useState(apiUsage?.fr24?.preferenceEnabled !== false);
   const [publicKey, setPublicKey] = useState(vapidPublicKey);
   const { locale, units, theme, mapStyle } = appearance;
 
@@ -244,6 +249,33 @@ export function SettingsPanel({
               usage={apiUsage?.aerodatabox}
               remainingKind="requests"
             />
+            <div className="space-y-2">
+              <ProviderUsageRow
+                name={t("settings.fr24Name")}
+                usage={apiUsage?.fr24}
+                remainingKind="credits"
+              />
+              {apiUsage?.fr24?.configured && (
+                <>
+                  <div className="flex min-h-11 items-center justify-between gap-3">
+                    <span className="text-sm leading-snug">{t("settings.fr24Enable")}</span>
+                    <Switch
+                      checked={fr24On}
+                      disabled={apiUsage.fr24.envEnabled === false}
+                      onCheckedChange={(value) => {
+                        setFr24On(value);
+                        void fetch("/api/settings/fr24", {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ enabled: value }),
+                        });
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs leading-snug text-muted-foreground">{t("settings.fr24Hint")}</p>
+                </>
+              )}
+            </div>
           </div>
           {role === "ADMIN" && (
             <p className="text-xs text-muted-foreground">{t("settings.admin")}</p>
@@ -285,16 +317,19 @@ function ProviderUsageRow({
   const t = useT();
   const configured = usage?.configured ?? fallbackHealthy != null;
   const healthy = usage?.healthy ?? fallbackHealthy ?? false;
+  const enabled = usage?.enabled ?? configured;
   const status = !configured
     ? t("settings.providerOff")
-    : healthy
-      ? t("settings.healthy")
-      : t("settings.limited");
+    : !enabled
+      ? t("settings.providerPaused")
+      : healthy
+        ? t("settings.healthy")
+        : t("settings.limited");
   return (
     <div className="space-y-1">
       <div className="flex items-start justify-between gap-3 text-sm">
         <span className="break-words leading-snug">{name}</span>
-        <span className={configured && healthy ? "text-success" : "text-warning"}>{status}</span>
+        <span className={configured && enabled && healthy ? "text-success" : "text-warning"}>{status}</span>
       </div>
       {configured && usage && (
         <div className="space-y-0.5 text-xs text-muted-foreground">

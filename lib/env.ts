@@ -20,6 +20,16 @@ export const env = {
     const n = Number(process.env.OPENSKY_MIN_INTERVAL_MS);
     return Number.isFinite(n) && n > 0 ? n : 90_000;
   })(),
+  // Official FR24 API token name (fr24sdk). Prefer lib/server-env.ts at runtime.
+  fr24Token: trimEnv(process.env.FR24_API_TOKEN),
+  fr24Enabled: (() => {
+    const raw = process.env.FR24_ENABLED?.trim().toLowerCase();
+    return raw !== "false" && raw !== "0";
+  })(),
+  fr24MinIntervalMs: (() => {
+    const n = Number(process.env.FR24_MIN_INTERVAL_MS);
+    return Number.isFinite(n) && n > 0 ? n : 180_000;
+  })(),
   preflightWindowHours: Number(process.env.PREFLIGHT_WINDOW_HOURS ?? 2),
 };
 
@@ -29,6 +39,10 @@ export function hasOpenSkyAuth() {
 
 export function hasAeroDataBox() {
   return Boolean(env.aeroKey);
+}
+
+export function hasFr24() {
+  return Boolean(env.fr24Token);
 }
 
 /** Env override only. Runtime keys live in AppSetting via lib/vapid.ts. */

@@ -1,8 +1,10 @@
 import { prisma } from "./db";
-import { hasAeroDataBox, hasOpenSkyAuth } from "./server-env";
+import { fr24Config, hasAeroDataBox, hasFr24Token, hasOpenSkyAuth } from "./server-env";
 
 export const QUOTA_SETTING_AERO = "quota:aerodatabox";
 export const QUOTA_SETTING_OPENSKY = "quota:opensky";
+export const QUOTA_SETTING_FR24 = "quota:fr24";
+export const FR24_ENABLED_SETTING = "fr24:enabled";
 
 export type StoredQuota = {
   remaining: number | null;
@@ -15,6 +17,9 @@ export type StoredQuota = {
 
 export type ProviderUsage = {
   configured: boolean;
+  enabled: boolean;
+  preferenceEnabled?: boolean;
+  envEnabled?: boolean;
   healthy: boolean;
   usedToday: number;
   remaining: number | null;
@@ -27,6 +32,7 @@ export type ProviderUsage = {
 export type ApiUsageSnapshot = {
   aerodatabox: ProviderUsage;
   opensky: ProviderUsage;
+  fr24: ProviderUsage;
 };
 
 function headerInt(headers: Headers, ...names: string[]): number | null {
@@ -79,6 +85,28 @@ export function parseOpenSkyQuotaHeaders(headers: Headers): StoredQuota | null {
   };
 }
 
+/** Persist remaining credits only when FR24 actually sends a credit header. Do not invent. */
+export function parseFr24QuotaHeaders(headers: Headers): StoredQuota | null {
+  const remaining = headerInt(
+    headers,
+    "x-credits-remaining",
+    "x-credit-remaining",
+    "credits-remaining",
+    "x-remaining-credits",
+    "x-api-credits-remaining",
+  );
+  const limit = headerInt(headers, "x-credits-limit", "x-credit-limit", "credits-limit");
+  if (remaining == null && limit == null) return null;
+  return {
+    remaining,
+    limit,
+    resetSeconds: null,
+    dailyRemaining: null,
+    dailyLimit: null,
+    observedAt: new Date().toISOString(),
+  };
+}
+
 async function persistQuota(key: string, quota: StoredQuota) {
   try {
     await prisma.appSetting.upsert({
@@ -99,6 +127,11 @@ export async function persistAeroQuota(headers: Headers) {
 export async function persistOpenSkyQuota(headers: Headers) {
   const quota = parseOpenSkyQuotaHeaders(headers);
   if (quota) await persistQuota(QUOTA_SETTING_OPENSKY, quota);
+}
+
+export async function persistFr24Quota(headers: Headers) {
+  const quota = parseFr24QuotaHeaders(headers);
+  if (quota) await persistQuota(QUOTA_SETTING_FR24, quota);
 }
 
 export async function getStoredOpenSkyRemaining(): Promise<number | null> {
@@ -125,10 +158,11 @@ function utcDayStart(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-function emptyUsage(configured: boolean): ProviderUsage {
+function emptyUsage(configured: boolean, enabled = configured): ProviderUsage {
   return {
     configured,
-    healthy: configured,
+    enabled,
+    healthy: configured && enabled,
     usedToday: 0,
     remaining: null,
     limit: null,
@@ -140,19 +174,28 @@ function emptyUsage(configured: boolean): ProviderUsage {
 
 export async function getApiUsageSnapshot(): Promise<ApiUsageSnapshot> {
   const since = utcDayStart();
-  const [aeroLast, openLast, aeroCount, openCount, aeroStored, openStored] = await Promise.all([
-    prisma.apiLog.findFirst({ where: { provider: "aerodatabox" }, orderBy: { createdAt: "desc" } }),
-    prisma.apiLog.findFirst({ where: { provider: "opensky" }, orderBy: { createdAt: "desc" } }),
-    prisma.apiLog.count({ where: { provider: "aerodatabox", createdAt: { gte: since } } }),
-    prisma.apiLog.count({ where: { provider: "opensky", createdAt: { gte: since } } }),
-    prisma.appSetting.findUnique({ where: { key: QUOTA_SETTING_AERO } }),
-    prisma.appSetting.findUnique({ where: { key: QUOTA_SETTING_OPENSKY } }),
-  ]);
+  const [aeroLast, openLast, fr24Last, aeroCount, openCount, fr24Count, aeroStored, openStored, fr24Stored, fr24Pref] =
+    await Promise.all([
+      prisma.apiLog.findFirst({ where: { provider: "aerodatabox" }, orderBy: { createdAt: "desc" } }),
+      prisma.apiLog.findFirst({ where: { provider: "opensky" }, orderBy: { createdAt: "desc" } }),
+      prisma.apiLog.findFirst({ where: { provider: "fr24" }, orderBy: { createdAt: "desc" } }),
+      prisma.apiLog.count({ where: { provider: "aerodatabox", createdAt: { gte: since } } }),
+      prisma.apiLog.count({ where: { provider: "opensky", createdAt: { gte: since } } }),
+      prisma.apiLog.count({ where: { provider: "fr24", createdAt: { gte: since } } }),
+      prisma.appSetting.findUnique({ where: { key: QUOTA_SETTING_AERO } }),
+      prisma.appSetting.findUnique({ where: { key: QUOTA_SETTING_OPENSKY } }),
+      prisma.appSetting.findUnique({ where: { key: QUOTA_SETTING_FR24 } }),
+      prisma.appSetting.findUnique({ where: { key: FR24_ENABLED_SETTING } }),
+    ]);
 
   const aeroQuota = parseStored(aeroStored?.value);
   const openQuota = parseStored(openStored?.value);
+  const fr24Quota = parseStored(fr24Stored?.value);
   const aeroConfigured = hasAeroDataBox();
   const openConfigured = hasOpenSkyAuth();
+  const fr24Configured = hasFr24Token();
+  const fr24PrefOn = !fr24Pref || (fr24Pref.value !== "false" && fr24Pref.value !== "0");
+  const fr24Enabled = fr24Configured && fr24Config().envEnabled && fr24PrefOn;
 
   return {
     aerodatabox: {
@@ -174,6 +217,18 @@ export async function getApiUsageSnapshot(): Promise<ApiUsageSnapshot> {
       dailyRemaining: openQuota?.dailyRemaining ?? null,
       dailyLimit: openQuota?.dailyLimit ?? null,
       observedAt: openQuota?.observedAt ?? null,
+    },
+    fr24: {
+      ...emptyUsage(fr24Configured, fr24Enabled),
+      preferenceEnabled: fr24PrefOn,
+      envEnabled: fr24Config().envEnabled,
+      healthy: fr24Enabled && fr24Last?.ok !== false,
+      usedToday: fr24Count,
+      remaining: fr24Quota?.remaining ?? null,
+      limit: fr24Quota?.limit ?? null,
+      dailyRemaining: fr24Quota?.dailyRemaining ?? null,
+      dailyLimit: fr24Quota?.dailyLimit ?? null,
+      observedAt: fr24Quota?.observedAt ?? null,
     },
   };
 }
