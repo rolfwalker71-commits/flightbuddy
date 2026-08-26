@@ -1,0 +1,93 @@
+import { Worker } from "bullmq";
+import { PollPhase } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { getRedis } from "@/lib/redis";
+import { FLIGHT_POLL_QUEUE, REMINDER_QUEUE, scheduleFlightPoll } from "@/lib/queue";
+import { pollFlight } from "@/lib/polling";
+import { notifyUsers } from "@/lib/push";
+
+async function recoverDueFlights() {
+  const due = await prisma.flight.findMany({
+    where: {
+      pollPhase: { not: PollPhase.COMPLETE },
+      OR: [{ nextPollAt: null }, { nextPollAt: { lte: new Date() } }],
+    },
+    select: { id: true, nextPollAt: true },
+    take: 50,
+  });
+  for (const flight of due) {
+    await scheduleFlightPoll(flight.id, flight.nextPollAt);
+  }
+}
+
+const pollWorker = new Worker(
+  FLIGHT_POLL_QUEUE,
+  async (job) => {
+    const flightId = String(job.data.flightId ?? "");
+    if (!flightId) return;
+    await pollFlight(flightId);
+  },
+  { connection: getRedis(), concurrency: 2 },
+);
+
+const reminderWorker = new Worker(
+  REMINDER_QUEUE,
+  async (job) => {
+    const { userId, flightId } = job.data as { userId: string; flightId: string };
+    const stillTracked = await prisma.userFlight.findFirst({
+      where: { userId, flightId },
+      select: { id: true },
+    });
+    if (!stillTracked) return;
+    const flight = await prisma.flight.findUnique({
+      where: { id: flightId },
+      include: { departureAirport: true, arrivalAirport: true },
+    });
+    if (!flight || flight.pollPhase === PollPhase.COMPLETE) return;
+    await notifyUsers({
+      userIds: [userId],
+      kind: "preflight",
+      flight,
+    });
+  },
+  { connection: getRedis(), concurrency: 4 },
+);
+
+pollWorker.on("failed", (job, err) => {
+  console.error("[poll] failed", job?.id, err.message);
+});
+reminderWorker.on("failed", (job, err) => {
+  console.error("[reminder] failed", job?.id, err.message);
+});
+
+async function recoverRecurringFlights() {
+  try {
+    const { advanceRecurringFlights } = await import("@/lib/recurrence");
+    await advanceRecurringFlights();
+  } catch (err) {
+    console.error("[recurrence] recover failed", err);
+  }
+}
+
+void (async () => {
+  const { ensureWebPushConfigured } = await import("@/lib/vapid");
+  await ensureWebPushConfigured();
+  await recoverDueFlights();
+  await recoverRecurringFlights();
+  console.log("FlightBuddy worker ready");
+})();
+
+setInterval(() => {
+  void recoverDueFlights();
+}, 5 * 60 * 1000);
+
+setInterval(() => {
+  void recoverRecurringFlights();
+}, 15 * 60 * 1000);
+
+function shutdown() {
+  void Promise.all([pollWorker.close(), reminderWorker.close()]).then(() => process.exit(0));
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

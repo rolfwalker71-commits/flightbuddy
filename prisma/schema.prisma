@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum FlightStatus {
+  SCHEDULED
+  DELAYED
+  BOARDING
+  DEPARTED
+  EN_ROUTE
+  LANDED
+  CANCELLED
+  DIVERTED
+  UNKNOWN
+}
+
+enum PollPhase {
+  INACTIVE
+  PREFLIGHT
+  AIRBORNE
+  COMPLETE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(USER)
+  image         String?
+  emailVerified DateTime?
+  locale        String    @default("de")
+  units         String    @default("metric")
+  theme         String    @default("dark")
+  mapStyle      String    @default("dark")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  flights     UserFlight[]
+  pushSubs    PushSubscription[]
+  notifications Notification[]
+  notifPref   NotificationPreference?
+}
+
+model Airport {
+  id       String  @id @default(cuid())
+  icao     String? @unique
+  iata     String? @unique
+  name     String
+  city     String?
+  country  String?
+  lat      Float
+  lon      Float
+  timezone String?
+  source   String  @default("ourairports")
+
+  departures Flight[] @relation("DepartureAirport")
+  arrivals   Flight[] @relation("ArrivalAirport")
+
+  @@index([city])
+  @@index([country])
+}
+
+model Airline {
+  id       String  @id @default(cuid())
+  icao     String? @unique
+  iata     String? @unique
+  name     String
+  country  String?
+  callsign String?
+  active   Boolean @default(true)
+  source   String  @default("openflights")
+
+  flights Flight[]
+}
+
+model Route {
+  id          String  @id @default(cuid())
+  airlineIata String?
+  airlineIcao String?
+  fromIata    String
+  toIata      String
+  source      String  @default("openflights")
+
+  @@index([airlineIata, fromIata, toIata])
+  @@index([fromIata, toIata])
+}
+
+model Flight {
+  id                 String        @id @default(cuid())
+  flightNumber       String
+  airlineIata        String?
+  airlineIcao        String?
+  airlineId          String?
+  airline            Airline?      @relation(fields: [airlineId], references: [id])
+  departureAirportId String?
+  arrivalAirportId   String?
+  departureAirport   Airport?      @relation("DepartureAirport", fields: [departureAirportId], references: [id])
+  arrivalAirport     Airport?      @relation("ArrivalAirport", fields: [arrivalAirportId], references: [id])
+  scheduledDep       DateTime
+  scheduledArr       DateTime?
+  estimatedDep       DateTime?
+  estimatedArr       DateTime?
+  actualDep          DateTime?
+  actualArr          DateTime?
+  status             FlightStatus  @default(SCHEDULED)
+  delayMinutes       Int?
+  gate               String?
+  terminal           String?
+  arrivalGate       String?
+  arrivalTerminal    String?
+  aircraftType       String?
+  registration       String?
+  icao24             String?
+  callsign           String?
+  lastLat            Float?
+  lastLon            Float?
+  lastAltitudeFt     Float?
+  lastVelocityKts    Float?
+  lastHeading        Float?
+  lastOnGround       Boolean?
+  lastPositionAt     DateTime?
+  pollPhase          PollPhase     @default(INACTIVE)
+  nextPollAt         DateTime?
+  lastStatusSource   String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  userFlights UserFlight[]
+  positions   FlightPosition[]
+
+  @@unique([flightNumber, scheduledDep])
+  @@index([nextPollAt, pollPhase])
+  @@index([status])
+}
+
+model UserFlight {
+  id         String   @id @default(cuid())
+  userId     String
+  flightId   String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flight     Flight   @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  seat       String?
+  notes      String?
+  pushAlerts Boolean  @default(true)
+  /// Follow the next official instance of this number + typical route on later origin-local days.
+  trackDaily Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, flightId])
+  @@index([userId])
+  @@index([trackDaily])
+}
+
+model FlightPosition {
+  id          String   @id @default(cuid())
+  flightId    String
+  flight      Flight   @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  lat         Float
+  lon         Float
+  altitudeFt  Float?
+  velocityKts Float?
+  heading     Float?
+  onGround    Boolean  @default(false)
+  source      String   @default("opensky")
+  recordedAt  DateTime @default(now())
+
+  @@index([flightId, recordedAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model NotificationPreference {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  webPush      Boolean @default(true)
+  gateChanges  Boolean @default(true)
+  delaysStatus Boolean @default(true)
+  preflight2h  Boolean @default(true)
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  flightId  String?
+  kind      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model ApiLog {
+  id         String   @id @default(cuid())
+  provider   String
+  endpoint   String
+  statusCode Int?
+  ok         Boolean
+  latencyMs  Int
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([provider, createdAt])
+}

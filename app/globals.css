@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  font-size: 112.5%;
+}
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 20% 12%;
+    --card: 210 16% 96%;
+    --card-foreground: 222 20% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 12%;
+    --primary: 191 90% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 16% 94%;
+    --secondary-foreground: 222 20% 12%;
+    --muted: 210 16% 94%;
+    --muted-foreground: 215 12% 40%;
+    --accent: 210 16% 94%;
+    --accent-foreground: 222 20% 12%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 160 84% 28%;
+    --success-foreground: 160 84% 96%;
+    --warning: 32 90% 40%;
+    --warning-foreground: 38 92% 12%;
+    --border: 214 18% 86%;
+    --input: 214 18% 86%;
+    --ring: 191 90% 32%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 14% 4%;
+    --foreground: 240 5% 96%;
+    --card: 222 12% 7%;
+    --card-foreground: 240 5% 96%;
+    --popover: 222 12% 7%;
+    --popover-foreground: 240 5% 96%;
+    --primary: 187 100% 62%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 228 10% 16%;
+    --secondary-foreground: 240 5% 96%;
+    --muted: 228 10% 16%;
+    --muted-foreground: 240 5% 64%;
+    --accent: 228 10% 16%;
+    --accent-foreground: 240 5% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 160 84% 39%;
+    --success-foreground: 160 84% 90%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 12%;
+    --border: 228 10% 18%;
+    --input: 228 10% 18%;
+    --ring: 187 100% 62%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  input[type="date"]:not([data-empty="true"]:not(:focus)),
+  input[type="datetime-local"]:not([data-empty="true"]:not(:focus)) {
+    color: hsl(var(--foreground));
+  }
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 0.625rem;
+  background: transparent !important;
+  color: hsl(var(--muted-foreground));
+}
+
+@keyframes aircraft-sheet-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes aircraft-sheet-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes aircraft-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes aircraft-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.aircraft-history-sheet[data-state="open"] {
+  animation: aircraft-sheet-in 0.75s ease-in-out both;
+}
+
+.aircraft-history-sheet[data-state="closed"] {
+  animation: aircraft-sheet-out 0.75s ease-in-out both;
+}
+
+.aircraft-history-backdrop[data-state="open"] {
+  animation: aircraft-backdrop-in 0.75s ease-in-out both;
+}
+
+.aircraft-history-backdrop[data-state="closed"] {
+  animation: aircraft-backdrop-out 0.75s ease-in-out both;
+}

@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.5
+    environment:
+      POSTGRES_USER: flightbuddy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flightbuddy}
+      POSTGRES_DB: flightbuddy
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flightbuddy -d flightbuddy"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/rolfwalker71-commits/flightbuddy:${TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3377}:3377"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://flightbuddy:${POSTGRES_PASSWORD:-flightbuddy}@postgres:5432/flightbuddy?schema=public
+      REDIS_URL: redis://redis:6379
+      PORT: "3377"
+      APP_URL: ${APP_URL:-http://localhost:3377}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+      OPENSKY_USERNAME: ${OPENSKY_USERNAME:-}
+      OPENSKY_PASSWORD: ${OPENSKY_PASSWORD:-}
+      AERODATABOX_KEY: ${AERODATABOX_KEY:-}
+      AERODATABOX_HOST: ${AERODATABOX_HOST:-aerodatabox.p.rapidapi.com}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/rolfwalker71-commits/flightbuddy:${TAG:-latest}
+    command: ["worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://flightbuddy:${POSTGRES_PASSWORD:-flightbuddy}@postgres:5432/flightbuddy?schema=public
+      REDIS_URL: redis://redis:6379
+      APP_URL: ${APP_URL:-http://localhost:3377}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
+      OPENSKY_USERNAME: ${OPENSKY_USERNAME:-}
+      OPENSKY_PASSWORD: ${OPENSKY_PASSWORD:-}
+      AERODATABOX_KEY: ${AERODATABOX_KEY:-}
+      AERODATABOX_HOST: ${AERODATABOX_HOST:-aerodatabox.p.rapidapi.com}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

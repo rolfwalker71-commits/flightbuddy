@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.gitignore
+mockups
+*.md
+.env
+.env.*
+!.env.example
+agent-transcripts

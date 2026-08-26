@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "locale" TEXT NOT NULL DEFAULT 'de';
+ALTER TABLE "User" ADD COLUMN "units" TEXT NOT NULL DEFAULT 'metric';
