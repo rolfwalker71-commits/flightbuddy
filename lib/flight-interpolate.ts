@@ -71,6 +71,14 @@ function hasDeparted(status: FlightStatus, dep: Date | null, now: Date) {
   return Boolean(dep && dep.getTime() <= now.getTime());
 }
 
+/** True once the aircraft is away (status or effective dep in the past). Not landed/cancelled. */
+export function flightHasDeparted(
+  input: Pick<InterpolateFlightInput, "status" | "scheduledDep" | "estimatedDep" | "actualDep">,
+  now = new Date(),
+) {
+  return hasDeparted(input.status, departureInstant(input), now);
+}
+
 /**
  * Display position while airborne. Fresh ADS-B/ADB wins; a stale (or missing)
  * fix is advanced along the remaining great circle using dep/arr times.

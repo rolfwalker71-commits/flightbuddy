@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "./status-badge";
 import { DeleteFlightButton } from "./delete-flight-button";
 import { RoutePlane } from "./route-plane";
@@ -12,7 +13,8 @@ import {
   type UserFlightView,
 } from "@/lib/flight-view";
 import { useLiveClock } from "@/lib/use-live-clock";
-import { isLiveStatus } from "@/lib/flight-status";
+import { isLiveStatus, isPastStatus } from "@/lib/flight-status";
+import { departureInstant, flightHasDeparted } from "@/lib/flight-interpolate";
 import { FlightMap } from "@/components/map/flight-map";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { formatAltitudePair, formatClock, formatDay, formatDuration, formatStand } from "@/lib/i18n/format";
@@ -52,9 +54,18 @@ export function FlightCard({
     airportTimeZone(flight.departureAirport?.iata, flight.departureAirport?.timezone),
   );
   const altitude = tel.altitudeFt != null ? formatAltitudePair(tel.altitudeFt, locale) : null;
+  const depInstant = departureInstant(flight);
+  const minutesToDep = depInstant ? (depInstant.getTime() - nowMs) / 60000 : null;
+  const departed = flightHasDeparted(flight, now);
+  const past = isPastStatus(flight.status);
+  const routeCaption = live
+    ? `${formatDuration(m.remainingMin, locale)} · ${
+        altitude ? `${altitude.primary} · ${altitude.secondary}` : t("flight.live")
+      }`
+    : (depStand ?? formatDuration(m.durationMin, locale));
 
   return (
-    <Card className="relative overflow-hidden p-4 transition-colors hover:bg-muted">
+    <Card className="relative overflow-hidden bg-card p-4 shadow-card ring-1 ring-border transition-colors hover:bg-muted">
       <Link
         href={`/flights/${flight.id}`}
         className="absolute inset-0 z-0 rounded-2xl"
@@ -103,22 +114,9 @@ export function FlightCard({
         </div>
       </div>
 
-      <div className="pointer-events-none mt-4 flex items-end justify-between gap-3">
-        <div>
-          <p className="break-words text-2xl font-semibold tracking-tight md:text-3xl">{from}</p>
-          <p className="text-sm text-muted-foreground">{flight.departureAirport?.city}</p>
-          <AirportClock
-            role="dep"
-            scheduled={flight.scheduledDep}
-            estimated={flight.estimatedDep}
-            actual={flight.actualDep}
-            iata={flight.departureAirport?.iata}
-            storedTimeZone={flight.departureAirport?.timezone}
-            status={flight.status}
-          />
-          {depStand && <p className="text-xs text-muted-foreground">{depStand}</p>}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col items-center px-2 pb-4">
+      <div className="pointer-events-none mt-4 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-start gap-x-3">
+        <p className="break-words text-2xl font-bold tracking-tight md:text-3xl">{from}</p>
+        <div className="flex min-h-[2rem] items-center px-1 md:min-h-[2.25rem] md:px-2">
           <div className="relative h-px w-full bg-border">
             <div
               className="absolute inset-y-0 left-0 bg-primary"
@@ -126,29 +124,47 @@ export function FlightCard({
             />
             <RoutePlane progress={m.progress} />
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {live
-              ? `${formatDuration(m.remainingMin, locale)} · ${
-                  altitude ? `${altitude.primary} · ${altitude.secondary}` : t("flight.live")
-                }`
-              : depStand ?? formatDuration(m.durationMin, locale)}
-          </p>
         </div>
-        <div className="text-right">
-          <p className="break-words text-2xl font-semibold tracking-tight md:text-3xl">{to}</p>
-          <p className="text-sm text-muted-foreground">{flight.arrivalAirport?.city}</p>
-          <AirportClock
-            role="arr"
-            align="right"
-            scheduled={flight.scheduledArr}
-            estimated={flight.estimatedArr}
-            actual={flight.actualArr}
-            iata={flight.arrivalAirport?.iata}
-            storedTimeZone={flight.arrivalAirport?.timezone}
-            status={flight.status}
-          />
-          {arrStand && <p className="text-xs text-muted-foreground">{arrStand}</p>}
-        </div>
+        <p className="break-words text-right text-2xl font-bold tracking-tight md:text-3xl">{to}</p>
+
+        <p className="text-sm leading-snug text-muted-foreground">
+          {flight.departureAirport?.city || "\u00a0"}
+        </p>
+        <p className="px-1 text-center text-xs leading-snug break-words text-muted-foreground md:px-2">
+          {routeCaption}
+        </p>
+        <p className="text-right text-sm leading-snug text-muted-foreground">
+          {flight.arrivalAirport?.city || "\u00a0"}
+        </p>
+
+        <AirportClock
+          role="dep"
+          scheduled={flight.scheduledDep}
+          estimated={flight.estimatedDep}
+          actual={flight.actualDep}
+          iata={flight.departureAirport?.iata}
+          storedTimeZone={flight.departureAirport?.timezone}
+          status={flight.status}
+        />
+        <div />
+        <AirportClock
+          role="arr"
+          align="right"
+          scheduled={flight.scheduledArr}
+          estimated={flight.estimatedArr}
+          actual={flight.actualArr}
+          iata={flight.arrivalAirport?.iata}
+          storedTimeZone={flight.arrivalAirport?.timezone}
+          status={flight.status}
+        />
+
+        {(depStand || arrStand) && (
+          <>
+            <p className="text-xs leading-snug text-muted-foreground">{depStand || "\u00a0"}</p>
+            <div />
+            <p className="text-right text-xs leading-snug text-muted-foreground">{arrStand || "\u00a0"}</p>
+          </>
+        )}
       </div>
 
       {variant === "default" && live && m.origin && m.dest && (
@@ -163,11 +179,21 @@ export function FlightCard({
 
       {!live && (
         <div className="pointer-events-none mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-          <div>
-            <p className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">{t("flight.departsIn")}</p>
-            <p className="font-medium">
-              {formatDuration(Math.max(0, (new Date(flight.scheduledDep).getTime() - Date.now()) / 60000), locale)}
-            </p>
+          <div className="min-w-0">
+            {departed ? (
+              <Badge variant="live" className="mx-auto max-w-full whitespace-normal break-words text-center">
+                {t("flight.departedEnRoute")}
+              </Badge>
+            ) : past ? (
+              <StatusBadge status={flight.status} delayMinutes={flight.delayMinutes} className="mx-auto max-w-full whitespace-normal text-center" />
+            ) : (
+              <>
+                <p className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">{t("flight.departsIn")}</p>
+                <p className="font-medium leading-snug break-words">
+                  {formatDuration(minutesToDep, locale)}
+                </p>
+              </>
+            )}
           </div>
           <div>
             <p className="text-[0.7rem] uppercase tracking-wide text-muted-foreground">{t("flight.departs")}</p>

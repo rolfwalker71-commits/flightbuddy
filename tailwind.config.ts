@@ -69,7 +69,7 @@ const config: Config = {
       },
       boxShadow: {
         dock: "0 0.5rem 1.5rem rgba(0,0,0,0.45)",
-        card: "0 0.25rem 1rem rgba(0,0,0,0.35)",
+        card: "var(--shadow-card)",
       },
     },
   },

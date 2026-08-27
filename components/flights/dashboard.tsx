@@ -108,7 +108,7 @@ export function Dashboard({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">
-        <div className="space-y-3">
+        <div className="space-y-4 md:space-y-3">
           {visible.length === 0 ? (
             <Card className="p-8 text-center">
               <p className="text-lg font-medium">{t("home.emptyTitle")}</p>

@@ -26,9 +26,9 @@ html {
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
+    --background: 210 18% 94%;
     --foreground: 222 20% 12%;
-    --card: 210 16% 96%;
+    --card: 0 0% 100%;
     --card-foreground: 222 20% 12%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 20% 12%;
@@ -46,18 +46,19 @@ html {
     --success-foreground: 160 84% 96%;
     --warning: 32 90% 40%;
     --warning-foreground: 38 92% 12%;
-    --border: 214 18% 86%;
-    --input: 214 18% 86%;
+    --border: 214 16% 84%;
+    --input: 214 16% 84%;
     --ring: 191 90% 32%;
     --radius: 0.75rem;
+    --shadow-card: 0 0.2rem 0.75rem hsl(222 20% 12% / 0.07), 0 0.0625rem 0.25rem hsl(222 20% 12% / 0.05);
   }
 
   .dark {
     --background: 222 14% 4%;
     --foreground: 240 5% 96%;
-    --card: 222 12% 7%;
+    --card: 222 12% 11%;
     --card-foreground: 240 5% 96%;
-    --popover: 222 12% 7%;
+    --popover: 222 12% 11%;
     --popover-foreground: 240 5% 96%;
     --primary: 187 100% 62%;
     --primary-foreground: 222 47% 6%;
@@ -73,9 +74,20 @@ html {
     --success-foreground: 160 84% 90%;
     --warning: 38 92% 50%;
     --warning-foreground: 38 92% 12%;
-    --border: 228 10% 18%;
-    --input: 228 10% 18%;
+    --border: 228 10% 24%;
+    --input: 228 10% 24%;
     --ring: 187 100% 62%;
+    --shadow-card: 0 0.4rem 1.25rem hsl(0 0% 0% / 0.45);
+  }
+
+  @media (max-width: 767px) {
+    :root {
+      --shadow-card: 0 0.35rem 1.25rem hsl(222 20% 12% / 0.1), 0 0.0625rem 0.375rem hsl(222 20% 12% / 0.06);
+    }
+
+    .dark {
+      --shadow-card: 0 0.55rem 1.75rem hsl(0 0% 0% / 0.55);
+    }
   }
 
   * {

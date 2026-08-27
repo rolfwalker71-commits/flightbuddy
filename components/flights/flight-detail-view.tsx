@@ -88,16 +88,16 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
           <AirlineLogo size="md" className="md:hidden" iata={airlineIata} name={flight.airline?.name} />
           <AirlineLogo size="lg" className="hidden md:flex" iata={airlineIata} name={flight.airline?.name} />
         </div>
-        <div className="mt-5 flex items-end justify-between">
+        <div className="mt-5 grid grid-cols-2 items-start gap-x-4">
           <div>
-            <p className="text-3xl font-semibold tracking-tight md:text-4xl">{flight.departureAirport?.iata ?? "—"}</p>
-            <p className="text-sm text-muted-foreground">{flight.departureAirport?.city}</p>
-            {depStand && <p className="text-sm text-muted-foreground">{depStand}</p>}
+            <p className="break-words text-3xl font-bold tracking-tight md:text-4xl">{flight.departureAirport?.iata ?? "—"}</p>
+            <p className="text-sm leading-snug text-muted-foreground">{flight.departureAirport?.city}</p>
+            {depStand && <p className="text-sm leading-snug text-muted-foreground">{depStand}</p>}
           </div>
           <div className="text-right">
-            <p className="text-3xl font-semibold tracking-tight md:text-4xl">{flight.arrivalAirport?.iata ?? "—"}</p>
-            <p className="text-sm text-muted-foreground">{flight.arrivalAirport?.city}</p>
-            {arrStand && <p className="text-sm text-muted-foreground">{arrStand}</p>}
+            <p className="break-words text-3xl font-bold tracking-tight md:text-4xl">{flight.arrivalAirport?.iata ?? "—"}</p>
+            <p className="text-sm leading-snug text-muted-foreground">{flight.arrivalAirport?.city}</p>
+            {arrStand && <p className="text-sm leading-snug text-muted-foreground">{arrStand}</p>}
           </div>
         </div>
         <div className="relative mt-4 h-1 rounded-full bg-muted">
