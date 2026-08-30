@@ -39,8 +39,8 @@ export function TrafficFlag({
       aria-label={t("map.trafficSelect", { callsign })}
       aria-pressed={selected}
       className={cn(
-        "flex max-w-[9.5rem] items-center gap-1 rounded-lg bg-card px-1.5 py-1 text-left shadow-sm ring-1 ring-border",
-        selected && "ring-2 ring-primary",
+        "fb-card flex max-w-[9.5rem] items-center gap-1 px-1.5 py-1 text-left",
+        selected && "bg-secondary text-primary",
       )}
     >
       <AirlineLogo

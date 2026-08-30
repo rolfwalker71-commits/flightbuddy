@@ -31,7 +31,7 @@ export function NotificationCard({
       {flight && (
         <Link
           href={`/flights/${flight.id}`}
-          className="absolute inset-0 z-0 rounded-2xl"
+          className="absolute inset-0 z-0 rounded-[var(--tile-radius)]"
           aria-label={model?.code ?? title}
         />
       )}

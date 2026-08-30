@@ -73,7 +73,7 @@ export function LogbookView({
         <p className="mb-2 text-sm text-muted-foreground">{t("logbook.topAirlines")}</p>
         <div className="flex flex-wrap gap-2">
           {stats.topAirlines.map((a) => (
-            <span key={a.name} className="rounded-xl border border-border bg-card px-3 py-2 text-sm shadow-card">
+            <span key={a.name} className="fb-card px-3 py-2 text-sm">
               {a.name}
             </span>
           ))}

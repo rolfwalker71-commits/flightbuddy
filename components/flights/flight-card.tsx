@@ -65,10 +65,10 @@ export function FlightCard({
     : (depStand ?? formatDuration(m.durationMin, locale));
 
   return (
-    <Card className="relative overflow-hidden bg-card p-4 shadow-card ring-1 ring-border transition-colors hover:bg-muted">
+    <Card className="relative overflow-hidden bg-card p-4 transition-colors hover:bg-muted">
       <Link
         href={`/flights/${flight.id}`}
-        className="absolute inset-0 z-0 rounded-2xl"
+        className="absolute inset-0 z-0 rounded-[var(--tile-radius)]"
         aria-label={label}
       />
       <div className="relative z-10 flex items-center justify-between gap-2 md:gap-3">
@@ -168,7 +168,7 @@ export function FlightCard({
       </div>
 
       {variant === "default" && live && m.origin && m.dest && (
-        <div className="pointer-events-none mt-4 h-36 overflow-hidden rounded-xl">
+        <div className="pointer-events-none mt-4 h-36 overflow-hidden rounded-[calc(var(--tile-radius)*0.65)]">
           <FlightMap
             interactive={false}
             className="h-36 w-full"

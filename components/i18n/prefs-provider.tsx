@@ -11,6 +11,7 @@ import {
 } from "react";
 import { DEFAULT_PREFS, t, type Locale, type MessageKey, type Prefs } from "@/lib/i18n/messages";
 import { writeClientPrefCookies } from "@/lib/i18n/pref-cookies";
+import { chromeThemeColor, readChromeStyle } from "@/lib/platform";
 
 type PrefsContextValue = {
   prefs: Prefs;
@@ -21,9 +22,6 @@ const PrefsContext = createContext<PrefsContextValue>({
   prefs: DEFAULT_PREFS,
   updatePrefs: () => {},
 });
-
-const DARK_THEME_COLOR = "#0B0D10";
-const LIGHT_THEME_COLOR = "#F7F9FB";
 
 function samePrefs(a: Prefs, b: Prefs) {
   return (
@@ -42,7 +40,7 @@ export function applyAppearance(prefs: Prefs) {
   root.style.colorScheme = prefs.theme;
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", prefs.theme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR);
+    ?.setAttribute("content", chromeThemeColor(readChromeStyle(), prefs.theme === "dark"));
   writeClientPrefCookies(prefs);
 }
 

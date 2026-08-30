@@ -235,7 +235,7 @@ export function LiveMapView({
                     className={cn(
                       tileClassName,
                       "w-full p-3 text-left",
-                      !selectedTraffic && selected?.flight.id === row.flight.id && "border-primary",
+                      !selectedTraffic && selected?.flight.id === row.flight.id && "bg-secondary text-primary",
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">

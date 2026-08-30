@@ -13,9 +13,11 @@ export default async function RegisterPage() {
       className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6"
       style={{ paddingTop: "var(--app-header-pad)" }}
     >
-      <h1 className="text-3xl font-semibold tracking-tight">{t(locale, "auth.registerTitle")}</h1>
-      <p className="mt-2 text-muted-foreground">{t(locale, "auth.registerSubtitle")}</p>
-      <RegisterForm />
+      <div className="fb-card p-6">
+        <h1 className="text-3xl font-semibold tracking-tight">{t(locale, "auth.registerTitle")}</h1>
+        <p className="mt-2 text-muted-foreground">{t(locale, "auth.registerSubtitle")}</p>
+        <RegisterForm />
+      </div>
     </div>
   );
 }

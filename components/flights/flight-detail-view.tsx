@@ -51,14 +51,14 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/" className="flex h-11 w-11 items-center justify-center rounded-full bg-card ring-1 ring-border">
+        <Link href="/" className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container">
           <ArrowLeft className="size-4" />
         </Link>
         <h1 className="text-lg font-semibold">{displayFlightNumber(flight.flightNumber)}</h1>
         <div className="w-11" />
       </div>
 
-      <div className="h-52 overflow-hidden rounded-2xl sm:h-56 md:h-80">
+      <div className="h-52 overflow-hidden rounded-[var(--tile-radius)] sm:h-56 md:h-80">
         {m.origin && m.dest ? (
           <FlightMap className="h-full w-full" flights={[toMapFlight(flight, { now })]} showLocate followCamera />
         ) : (

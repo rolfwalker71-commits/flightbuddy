@@ -12,6 +12,7 @@ import type { NotificationPreference } from "@prisma/client";
 import { usePrefs, useT, useUpdatePrefs } from "@/components/i18n/prefs-provider";
 import type { Prefs } from "@/lib/i18n/messages";
 import { MAP_STYLE_IDS, MAP_STYLES } from "@/lib/map-styles";
+import { ChromeSwitcher } from "@/components/chrome/chrome-switcher";
 import { TrackedObjectsList } from "@/components/map/tracked-objects-list";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
@@ -162,6 +163,7 @@ export function SettingsPanel({
       <div>
         <p className="mb-2 px-1 text-sm text-muted-foreground">{t("settings.appearance")}</p>
         <Card className="space-y-4 p-4">
+          <ChromeSwitcher />
           <div className="space-y-2">
             <p className="text-sm">{t("settings.theme")}</p>
             <Segmented
@@ -200,15 +202,17 @@ export function SettingsPanel({
           </div>
           <div className="space-y-2">
             <p className="text-sm">{t("settings.mapStyle")}</p>
-            <div className="flex flex-wrap gap-1 rounded-2xl bg-muted p-1">
+            <div data-slot="segmented" className="flex flex-wrap gap-0.5 rounded-full bg-muted p-0.5">
               {MAP_STYLE_IDS.map((id) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => void saveAppearance({ mapStyle: id })}
+                  data-slot="segmented-trigger"
+                  data-active={mapStyle === id}
                   className={`min-h-10 rounded-full px-3 text-sm leading-none ${
                     mapStyle === id
-                      ? "bg-card text-foreground shadow-sm"
+                      ? "bg-secondary text-primary"
                       : "text-muted-foreground"
                   }`}
                 >
@@ -216,7 +220,7 @@ export function SettingsPanel({
                 </button>
               ))}
             </div>
-            <div className="overflow-hidden rounded-xl border border-border">
+            <div className="overflow-hidden rounded-[var(--tile-radius)]">
               <FlightMap flights={[]} className="h-36 w-full" interactive={false} />
             </div>
           </div>

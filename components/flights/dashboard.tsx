@@ -12,6 +12,8 @@ import { AddFlightDialog } from "./add-flight-dialog";
 import { HomeHeroMap } from "./home-hero-map";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useChrome } from "@/components/chrome/chrome-provider";
+import { fabClass, fabClearance } from "@/lib/platform";
 import { isLiveStatus } from "@/lib/flight-status";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { greeting } from "@/lib/i18n/format";
@@ -38,6 +40,7 @@ export function Dashboard({
 }) {
   const { locale } = usePrefs();
   const t = useT();
+  const { chrome } = useChrome();
   const flights = useLiveFlights(initial);
   const nowMs = useLiveClock(flights.some((row) => flightNeedsLiveClock(row.flight)));
   const now = new Date(nowMs);
@@ -59,14 +62,14 @@ export function Dashboard({
           <Link
             href="/alerts"
             aria-label={t("nav.alerts")}
-            className="relative flex h-11 w-11 items-center justify-center rounded-full bg-card ring-1 ring-border md:hidden"
+            className="relative flex h-12 w-12 items-center justify-center rounded-full bg-surface-container lg:hidden"
           >
             <Bell className="size-4" />
             {unreadAlerts > 0 && (
               <span className="absolute right-2 top-2 size-2 rounded-full bg-primary" />
             )}
           </Link>
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <AddFlightDialog />
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-sm font-medium">
@@ -75,15 +78,17 @@ export function Dashboard({
         </div>
       </header>
 
-      <div className="flex h-10 min-h-10 items-center rounded-full bg-muted p-0.5">
+      <div data-slot="segmented" className="flex h-10 min-h-10 items-center rounded-full bg-muted p-0.5">
         {tabs.map((item) => (
           <button
             key={item.id}
             type="button"
+            data-slot="segmented-trigger"
+            data-active={tab === item.id}
             onClick={() => setTab(item.id)}
             className={cn(
               "flex h-full min-h-0 flex-1 items-center justify-center gap-2 rounded-full py-0 text-sm font-medium leading-none",
-              tab === item.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+              tab === item.id ? "bg-secondary text-primary" : "text-muted-foreground",
             )}
           >
             {item.id === "upcoming" && <Plane className="size-4" />}
@@ -92,7 +97,7 @@ export function Dashboard({
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 lg:hidden">
+      <div className="grid grid-cols-3 gap-3 lg:hidden">
         <Card className="p-3 text-center">
           <p className="text-lg font-semibold">{stats.flights}</p>
           <p className="text-xs text-muted-foreground">{t("home.flights")}</p>
@@ -154,11 +159,8 @@ export function Dashboard({
         </aside>
       </div>
 
-      <div
-        className="fixed right-4 z-30 md:hidden"
-        style={{ bottom: "calc(var(--dock-offset) + 0.75rem)" }}
-      >
-        <AddFlightDialog triggerLabel={t("home.add")} />
+      <div className="fixed right-4 z-30 lg:hidden" style={{ bottom: fabClearance(chrome, 1) }}>
+        <AddFlightDialog triggerLabel={t("home.add")} fab />
       </div>
     </div>
   );

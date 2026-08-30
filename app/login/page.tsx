@@ -34,13 +34,15 @@ export default async function LoginPage() {
         style={{ paddingTop: "max(2.5rem, var(--app-header-pad))" }}
       >
         <div className="mx-auto w-full max-w-sm">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Flight<span className="text-primary">Buddy</span>
-          </h1>
-          <p className="mt-2 text-muted-foreground">{t(locale, "auth.tagline")}</p>
-          <Suspense>
-            <LoginForm />
-          </Suspense>
+          <div className="fb-card p-6">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Flight<span className="text-primary">Buddy</span>
+            </h1>
+            <p className="mt-2 text-muted-foreground">{t(locale, "auth.tagline")}</p>
+            <Suspense>
+              <LoginForm />
+            </Suspense>
+          </div>
           <p className="mt-10 text-center text-xs text-muted-foreground">
             {t(locale, "auth.footer")}
           </p>

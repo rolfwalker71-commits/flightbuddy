@@ -300,7 +300,7 @@ export function AircraftHistoryControl({
         <DialogPortal>
           <DialogOverlay className="aircraft-history-backdrop bg-black/50 backdrop-blur-[2px]" />
           <DialogPrimitive.Content
-            className="aircraft-history-sheet fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-dock outline-none"
+            className="aircraft-history-sheet fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card outline-none"
             aria-modal="true"
             aria-labelledby={titleId}
             onOpenAutoFocus={(event) => {

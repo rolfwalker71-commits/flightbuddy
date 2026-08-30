@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { Bookmark, Loader2, Repeat, Search } from "lucide-react";
+import { Bookmark, Loader2, Plus, Repeat, Search } from "lucide-react";
+import { useChrome } from "@/components/chrome/chrome-provider";
+import { fabClass } from "@/lib/platform";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,8 +60,9 @@ function emptyMessageKey(reason?: FlightSearchEmptyReason): MessageKey {
   }
 }
 
-export function AddFlightDialog({ triggerLabel }: { triggerLabel?: string }) {
+export function AddFlightDialog({ triggerLabel, fab }: { triggerLabel?: string; fab?: boolean }) {
   const t = useT();
+  const { chrome } = useChrome();
   const { units, locale } = usePrefs();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("LH441");
@@ -160,7 +163,12 @@ export function AddFlightDialog({ triggerLabel }: { triggerLabel?: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>{triggerLabel ?? t("flight.add")}</Button>
+        <Button
+          className={cn(fab && fabClass(chrome), fab && "!h-auto !w-auto bg-primary text-primary-foreground")}
+          aria-label={triggerLabel ?? t("flight.add")}
+        >
+          {fab ? <Plus className={chrome === "android" ? "size-7" : "size-5"} /> : (triggerLabel ?? t("flight.add"))}
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogTitle>{t("flight.addTitle")}</DialogTitle>

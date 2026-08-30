@@ -51,6 +51,7 @@ const config: Config = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        "surface-container": "hsl(var(--surface-container))",
       },
       borderRadius: {
         lg: "var(--radius)",
