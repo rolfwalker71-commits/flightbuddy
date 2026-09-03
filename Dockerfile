@@ -17,24 +17,30 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL=postgresql://flightbuddy:flightbuddy@localhost:5432/flightbuddy
 ENV AUTH_SECRET=build-time-secret
-RUN npx prisma generate && npm run build
+# next build + worker/seed bundles (see scripts/bundle-runtime.mjs)
+RUN npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3377
 WORKDIR /app
+
+# Next standalone already ships a trimmed node_modules for the web app.
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+
+# Prisma schema + CLI for migrate deploy (not part of standalone).
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/worker ./worker
-COPY --from=builder /app/lib ./lib
-COPY --from=builder /app/auth.ts ./auth.ts
-COPY --from=builder /app/auth.config.ts ./auth.config.ts
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+
+# Bundled worker + seed (no tsx / no full node_modules).
+COPY --from=builder /app/dist/worker.cjs ./dist/worker.cjs
+COPY --from=builder /app/dist/seed.cjs ./dist/seed.cjs
+
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh \
   && useradd --system --uid 1001 nextjs \
