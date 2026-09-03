@@ -306,6 +306,6 @@ export function openSkyToTelemetry(state: OpenSkyState) {
     heading: state.trueTrack,
     onGround: state.onGround,
     squawk: state.squawk,
-    status: state.onGround ? FlightStatus.DEPARTED : FlightStatus.EN_ROUTE,
+    status: state.onGround ? FlightStatus.LANDED : FlightStatus.EN_ROUTE,
   };
 }

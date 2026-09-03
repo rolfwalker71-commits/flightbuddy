@@ -83,6 +83,68 @@ export function isPastStatus(status: FlightStatus) {
   return PAST_STATUSES.includes(status);
 }
 
+/** Terminal / cancelled — stop treating as airborne. */
+export function isTerminalStatus(status: FlightStatus) {
+  return (
+    status === FlightStatus.LANDED ||
+    status === FlightStatus.CANCELLED ||
+    status === FlightStatus.DIVERTED
+  );
+}
+
+/**
+ * ADS-B / FR24 on-ground while we still thought the flight was airborne → landed
+ * (or keep DIVERTED if we already know it was an alternate).
+ */
+export function statusAfterGroundFix(current: FlightStatus): FlightStatus {
+  if (current === FlightStatus.CANCELLED) return current;
+  if (current === FlightStatus.DIVERTED) return FlightStatus.DIVERTED;
+  if (
+    current === FlightStatus.EN_ROUTE ||
+    current === FlightStatus.DEPARTED ||
+    current === FlightStatus.BOARDING ||
+    current === FlightStatus.DELAYED ||
+    current === FlightStatus.UNKNOWN ||
+    current === FlightStatus.SCHEDULED
+  ) {
+    return FlightStatus.LANDED;
+  }
+  return current;
+}
+
+/**
+ * Merge schedule/status from Aero with an optional destination change.
+ * Airborne diversions stay EN_ROUTE/DEPARTED (so polling continues); landed
+ * at an alternate becomes DIVERTED.
+ */
+export function mergeAeroFlightStatus(opts: {
+  current: FlightStatus;
+  aeroStatus: FlightStatus;
+  destinationChanged: boolean;
+  actualArr?: Date | string | null;
+  now?: Date;
+}): FlightStatus {
+  const now = opts.now ?? new Date();
+  const actualArr = asDate(opts.actualArr);
+  const arrived = Boolean(actualArr && actualArr.getTime() <= now.getTime());
+  const aero = opts.aeroStatus;
+
+  if (aero === FlightStatus.CANCELLED) return FlightStatus.CANCELLED;
+
+  if (aero === FlightStatus.DIVERTED || opts.destinationChanged) {
+    if (arrived || aero === FlightStatus.LANDED) return FlightStatus.DIVERTED;
+    if (aero === FlightStatus.DEPARTED) return FlightStatus.DEPARTED;
+    if (isLiveStatus(opts.current) || opts.current === FlightStatus.DELAYED) {
+      return opts.current === FlightStatus.DEPARTED ? FlightStatus.DEPARTED : FlightStatus.EN_ROUTE;
+    }
+    return FlightStatus.EN_ROUTE;
+  }
+
+  if (aero !== FlightStatus.UNKNOWN) return aero;
+  if (arrived && !isTerminalStatus(opts.current)) return FlightStatus.LANDED;
+  return opts.current;
+}
+
 export function resolvePollPhase(
   flight: Pick<PollScheduleInput, "status" | "scheduledDep" | "actualDep" | "scheduledArr">,
   now = new Date(),

@@ -1,3 +1,4 @@
+import { FlightStatus } from "@prisma/client";
 import { addDays, format, subDays } from "date-fns";
 import { aeroConfig, hasAeroDataBox } from "./server-env";
 import { prisma } from "./db";
@@ -20,6 +21,8 @@ export type AeroLiveTelemetry = {
   actualDep?: string;
   actualArr?: string;
   delayMinutes?: number;
+  status?: ReturnType<typeof mapProviderStatus>;
+  toIata?: string;
   lat?: number;
   lon?: number;
   altitudeFt?: number;
@@ -731,47 +734,78 @@ export async function lookupAeroByAircraft(opts: {
   }
 }
 
+const PICK_DEP_WINDOW_MS = 12 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Lower score wins. Prefers diversion/landing rows over a stale same-route EN_ROUTE. */
+function aeroPickScore(
+  flight: AeroFlight,
+  scheduledDep: Date,
+  opts?: { fromIata?: string | null; toIata?: string | null },
+): number | null {
+  if (!flight.scheduledDep) return null;
+  const delta = Math.abs(new Date(flight.scheduledDep).getTime() - scheduledDep.getTime());
+  if (delta > PICK_DEP_WINDOW_MS) return null;
+  if (opts?.fromIata && flight.fromIata && flight.fromIata !== opts.fromIata) return null;
+
+  let score = delta;
+  const toMatch = Boolean(opts?.toIata && flight.toIata && flight.toIata === opts.toIata);
+  const toChanged = Boolean(opts?.toIata && flight.toIata && flight.toIata !== opts.toIata);
+
+  if (flight.status === FlightStatus.DIVERTED) score -= 4 * HOUR_MS;
+  if (flight.status === FlightStatus.LANDED && toChanged) score -= 3.5 * HOUR_MS;
+  else if (flight.status === FlightStatus.LANDED) score -= 1.5 * HOUR_MS;
+  if (toChanged && (flight.status === FlightStatus.EN_ROUTE || flight.status === FlightStatus.DEPARTED)) {
+    score -= 2 * HOUR_MS;
+  }
+  if (toMatch) score -= 0.5 * HOUR_MS;
+  return score;
+}
+
 /** Pick the Aero row for this scheduled departure — not yesterday's same flight number. */
 export function pickAeroForScheduledDep(
   flights: AeroFlight[],
   scheduledDep: Date,
   opts?: { fromIata?: string | null; toIata?: string | null },
 ): AeroFlight | undefined {
-  const byRoute = flights.filter((f) => {
-    if (opts?.fromIata && f.fromIata && f.fromIata !== opts.fromIata) return false;
-    if (opts?.toIata && f.toIata && f.toIata !== opts.toIata) return false;
-    return true;
-  });
-  const pool = byRoute.length ? byRoute : flights;
   let best: AeroFlight | undefined;
-  let bestDelta = Number.POSITIVE_INFINITY;
-  for (const flight of pool) {
-    if (!flight.scheduledDep) continue;
-    const delta = Math.abs(new Date(flight.scheduledDep).getTime() - scheduledDep.getTime());
-    if (delta < bestDelta) {
-      best = flight;
-      bestDelta = delta;
-    }
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const flight of flights) {
+    const score = aeroPickScore(flight, scheduledDep, opts);
+    if (score == null || score >= bestScore) continue;
+    best = flight;
+    bestScore = score;
   }
-  if (best && bestDelta <= 12 * 60 * 60 * 1000) return best;
-  return undefined;
+  return best;
 }
 
 function pickLiveAeroFlight(
   flights: AeroFlight[],
+  scheduledDep: Date,
   opts?: { fromIata?: string | null; toIata?: string | null },
 ) {
-  const liveStatuses = new Set(["EN_ROUTE", "DEPARTED", "BOARDING"]);
-  const sameRoute = flights.filter((f) => {
-    if (opts?.fromIata && f.fromIata && f.fromIata !== opts.fromIata) return false;
-    if (opts?.toIata && f.toIata && f.toIata !== opts.toIata) return false;
-    return true;
-  });
-  const pool = sameRoute.length ? sameRoute : flights;
+  const liveStatuses = new Set<FlightStatus>([
+    FlightStatus.EN_ROUTE,
+    FlightStatus.DEPARTED,
+    FlightStatus.BOARDING,
+    FlightStatus.DIVERTED,
+  ]);
+  // Prefer schedule-aware pick (handles diverted destination), then location, then live status.
+  const bySchedule = pickAeroForScheduledDep(flights, scheduledDep, opts);
+  if (bySchedule?.lat != null && bySchedule.lon != null) return bySchedule;
+  if (bySchedule && (liveStatuses.has(bySchedule.status) || bySchedule.status === FlightStatus.LANDED)) {
+    return bySchedule;
+  }
+
+  const fromOk = (f: AeroFlight) =>
+    !opts?.fromIata || !f.fromIata || f.fromIata === opts.fromIata;
+  const pool = flights.filter(fromOk);
+  const use = pool.length ? pool : flights;
   return (
-    pool.find((f) => f.lat != null && f.lon != null) ??
-    pool.find((f) => liveStatuses.has(f.status)) ??
-    pool[0] ??
+    use.find((f) => f.lat != null && f.lon != null) ??
+    use.find((f) => liveStatuses.has(f.status)) ??
+    bySchedule ??
+    use[0] ??
     null
   );
 }
@@ -799,7 +833,7 @@ export async function lookupAeroLiveTelemetry(
       error: res.ok ? null : text.slice(0, 500),
     });
     if (!res.ok) return null;
-    const match = pickLiveAeroFlight(rowsFromAeroBody(text).map(mapAero), opts);
+    const match = pickLiveAeroFlight(rowsFromAeroBody(text).map(mapAero), date, opts);
     if (!match) return null;
     return {
       icao24: match.icao24,
@@ -816,6 +850,8 @@ export async function lookupAeroLiveTelemetry(
       actualDep: match.actualDep,
       actualArr: match.actualArr,
       delayMinutes: match.delayMinutes,
+      status: match.status,
+      toIata: match.toIata,
       lat: match.lat,
       lon: match.lon,
       altitudeFt: match.altitudeFt,

@@ -5,7 +5,14 @@ import { lookupAeroLiveTelemetry, pickAeroForScheduledDep, searchAeroDataBox } f
 import { candidateCallsigns, fetchOpenSkyStates, openSkyToTelemetry } from "./opensky";
 import { fetchFr24LivePosition } from "./fr24";
 import { LIVE_FIX_STALE_MS } from "./flight-interpolate";
-import { nextPollAt, resolvePollPhase, type PollScheduleInput } from "./flight-status";
+import {
+  isTerminalStatus,
+  mergeAeroFlightStatus,
+  nextPollAt,
+  resolvePollPhase,
+  statusAfterGroundFix,
+  type PollScheduleInput,
+} from "./flight-status";
 import { getUserFlight } from "./flights";
 import { scheduleFlightPoll, scheduleUserFlightReminders } from "./queue";
 import { env } from "./env";
@@ -72,6 +79,11 @@ async function persistLiveFix(flightId: string, fix: LiveFix) {
   });
 }
 
+async function resolveArrivalAirport(iata?: string | null) {
+  if (!iata) return null;
+  return prisma.airport.findUnique({ where: { iata } });
+}
+
 export async function pollFlight(flightId: string) {
   const flight = await prisma.flight.findUnique({
     where: { id: flightId },
@@ -83,46 +95,70 @@ export async function pollFlight(flightId: string) {
     },
   });
   if (!flight) return;
+  const row = flight;
 
   const prev = {
-    status: flight.status,
-    gate: flight.gate,
-    delayMinutes: flight.delayMinutes,
+    status: row.status,
+    gate: row.gate,
+    delayMinutes: row.delayMinutes,
+    arrivalIata: row.arrivalAirport?.iata ?? null,
   };
 
-  const phase = resolvePollPhase(flight);
-  let nextStatus = flight.status;
-  let nextGate = flight.gate;
-  let nextDelay = flight.delayMinutes;
-  let estimatedDep = flight.estimatedDep;
-  let estimatedArr = flight.estimatedArr;
-  let actualDep = flight.actualDep;
-  let actualArr = flight.actualArr;
-  let terminal = flight.terminal;
-  let arrivalGate = flight.arrivalGate;
-  let arrivalTerminal = flight.arrivalTerminal;
-  let aircraftType = flight.aircraftType;
-  let registration = flight.registration;
-  let lastStatusSource = flight.lastStatusSource;
-  let nextSquawk = flight.lastSquawk ?? null;
+  const phase = resolvePollPhase(row);
+  let nextStatus = row.status;
+  let nextGate = row.gate;
+  let nextDelay = row.delayMinutes;
+  let estimatedDep = row.estimatedDep;
+  let estimatedArr = row.estimatedArr;
+  let actualDep = row.actualDep;
+  let actualArr = row.actualArr;
+  let terminal = row.terminal;
+  let arrivalGate = row.arrivalGate;
+  let arrivalTerminal = row.arrivalTerminal;
+  let aircraftType = row.aircraftType;
+  let registration = row.registration;
+  let lastStatusSource = row.lastStatusSource;
+  let nextSquawk = row.lastSquawk ?? null;
   let squawkAlertCode: string | null = null;
+  let nextArrivalAirportId = row.arrivalAirportId;
+  let arrivalAirport = row.arrivalAirport;
+  let destinationChanged = false;
+  let lastOnGround = row.lastOnGround ?? false;
+
+  async function applyArrivalIata(iata?: string | null) {
+    if (!iata || iata === (arrivalAirport?.iata ?? null)) return;
+    const airport = await resolveArrivalAirport(iata);
+    if (!airport) return;
+    destinationChanged = true;
+    nextArrivalAirportId = airport.id;
+    arrivalAirport = airport;
+    row.arrivalAirport = airport;
+  }
 
   if (phase === PollPhase.INACTIVE || phase === PollPhase.PREFLIGHT || phase === PollPhase.AIRBORNE) {
-    const aero = await searchAeroDataBox(flight.flightNumber, flight.scheduledDep);
-    const match = pickAeroForScheduledDep(aero, flight.scheduledDep, {
-      fromIata: flight.departureAirport?.iata,
-      toIata: flight.arrivalAirport?.iata,
+    const aero = await searchAeroDataBox(row.flightNumber, row.scheduledDep);
+    const match = pickAeroForScheduledDep(aero, row.scheduledDep, {
+      fromIata: row.departureAirport?.iata,
+      toIata: prev.arrivalIata,
     });
     if (match) {
-      if (match.status !== FlightStatus.UNKNOWN) nextStatus = match.status;
+      await applyArrivalIata(match.toIata);
+      actualArr = match.actualArr ? new Date(match.actualArr) : actualArr;
+      nextStatus = mergeAeroFlightStatus({
+        current: nextStatus,
+        aeroStatus: match.status,
+        destinationChanged: Boolean(
+          match.toIata && prev.arrivalIata && match.toIata !== prev.arrivalIata,
+        ),
+        actualArr,
+      });
       nextGate = match.gate ?? nextGate;
       nextDelay = match.delayMinutes ?? nextDelay;
       estimatedDep = match.estimatedDep ? new Date(match.estimatedDep) : estimatedDep;
       estimatedArr = match.estimatedArr ? new Date(match.estimatedArr) : estimatedArr;
       actualDep = match.actualDep ? new Date(match.actualDep) : actualDep;
-      actualArr = match.actualArr ? new Date(match.actualArr) : actualArr;
-      if (match.scheduledArr && !flight.scheduledArr) {
-        flight.scheduledArr = new Date(match.scheduledArr);
+      if (match.scheduledArr && !row.scheduledArr) {
+        row.scheduledArr = new Date(match.scheduledArr);
       }
       terminal = match.terminal ?? terminal;
       arrivalGate = match.arrivalGate ?? arrivalGate;
@@ -130,19 +166,19 @@ export async function pollFlight(flightId: string) {
       aircraftType = match.aircraftType ?? aircraftType;
       registration = match.registration ?? registration;
       lastStatusSource = "aerodatabox";
-      await persistIdentity(flight.id, {
+      await persistIdentity(row.id, {
         icao24: match.icao24,
         callsign: match.callsign,
         aircraftType: match.aircraftType,
         registration: match.registration,
       });
-      if (match.icao24) flight.icao24 = match.icao24;
-      if (match.callsign) flight.callsign = match.callsign;
+      if (match.icao24) row.icao24 = match.icao24;
+      if (match.callsign) row.callsign = match.callsign;
     }
   }
 
   const airborneNow = resolvePollPhase({
-    ...flight,
+    ...row,
     status: nextStatus,
     actualDep,
   });
@@ -152,33 +188,32 @@ export async function pollFlight(flightId: string) {
     // OpenSky is gated by OPENSKY_MIN_INTERVAL_MS (default 90s). On cooldown
     // fetchOpenSkyStates returns null; AeroDataBox location is the fallback.
     const state = await fetchOpenSkyStates({
-      icao24: flight.icao24,
-      origin: flight.departureAirport,
-      dest: flight.arrivalAirport,
+      icao24: row.icao24,
+      origin: row.departureAirport,
+      dest: arrivalAirport,
       current:
-        flight.lastLat != null && flight.lastLon != null
-          ? { lat: flight.lastLat, lon: flight.lastLon }
+        row.lastLat != null && row.lastLon != null
+          ? { lat: row.lastLat, lon: row.lastLon }
           : null,
       callsigns: candidateCallsigns({
-        flightNumber: flight.flightNumber,
-        airlineIata: flight.airlineIata,
-        airlineIcao: flight.airlineIcao ?? flight.airline?.icao,
+        flightNumber: row.flightNumber,
+        airlineIata: row.airlineIata,
+        airlineIcao: row.airlineIcao ?? row.airline?.icao,
       }),
     });
     if (state?.lat != null && state.lon != null) {
       const tel = openSkyToTelemetry(state);
-      nextStatus = tel.onGround && nextStatus === FlightStatus.EN_ROUTE
-        ? FlightStatus.LANDED
-        : tel.status;
+      lastOnGround = tel.onGround;
+      nextStatus = tel.onGround ? statusAfterGroundFix(nextStatus) : tel.status;
       lastStatusSource = "opensky";
       gotFix = true;
       if (tel.squawk) {
-        if (shouldAlertEmergencySquawk(flight.lastSquawk, tel.squawk)) {
+        if (shouldAlertEmergencySquawk(row.lastSquawk, tel.squawk)) {
           squawkAlertCode = tel.squawk;
         }
         nextSquawk = tel.squawk;
       }
-      await persistLiveFix(flight.id, {
+      await persistLiveFix(row.id, {
         lat: state.lat,
         lon: state.lon,
         altitudeFt: tel.altitudeFt,
@@ -190,29 +225,29 @@ export async function pollFlight(flightId: string) {
         squawk: tel.squawk,
         source: "opensky",
       });
-      flight.lastLat = state.lat;
-      flight.lastLon = state.lon;
-      if (tel.squawk) flight.lastSquawk = tel.squawk;
+      row.lastLat = state.lat;
+      row.lastLon = state.lon;
+      if (tel.squawk) row.lastSquawk = tel.squawk;
     } else {
       if (state?.icao24) {
-        await persistIdentity(flight.id, { icao24: state.icao24, callsign: state.callsign });
-        flight.icao24 = state.icao24;
+        await persistIdentity(row.id, { icao24: state.icao24, callsign: state.callsign });
+        row.icao24 = state.icao24;
       }
       if (state?.squawk) {
-        if (shouldAlertEmergencySquawk(flight.lastSquawk, state.squawk)) {
+        if (shouldAlertEmergencySquawk(row.lastSquawk, state.squawk)) {
           squawkAlertCode = state.squawk;
         }
         nextSquawk = state.squawk;
-        await safeFlightUpdate(flight.id, { lastSquawk: state.squawk });
-        flight.lastSquawk = state.squawk;
+        await safeFlightUpdate(row.id, { lastSquawk: state.squawk });
+        row.lastSquawk = state.squawk;
       }
-      const aero = await lookupAeroLiveTelemetry(flight.flightNumber, flight.scheduledDep, {
-        fromIata: flight.departureAirport?.iata,
-        toIata: flight.arrivalAirport?.iata,
+      const aero = await lookupAeroLiveTelemetry(row.flightNumber, row.scheduledDep, {
+        fromIata: row.departureAirport?.iata,
+        toIata: prev.arrivalIata,
       });
       if (aero) {
-        await persistIdentity(flight.id, aero);
-        if (aero.icao24) flight.icao24 = aero.icao24;
+        await persistIdentity(row.id, aero);
+        if (aero.icao24) row.icao24 = aero.icao24;
         if (aero.registration) registration = aero.registration;
         if (aero.gate) nextGate = aero.gate;
         if (aero.terminal) terminal = aero.terminal;
@@ -223,14 +258,28 @@ export async function pollFlight(flightId: string) {
         if (aero.actualDep) actualDep = new Date(aero.actualDep);
         if (aero.actualArr) actualArr = new Date(aero.actualArr);
         if (aero.delayMinutes != null) nextDelay = aero.delayMinutes;
-        if (aero.scheduledArr && !flight.scheduledArr) {
-          flight.scheduledArr = new Date(aero.scheduledArr);
+        if (aero.scheduledArr && !row.scheduledArr) {
+          row.scheduledArr = new Date(aero.scheduledArr);
+        }
+        await applyArrivalIata(aero.toIata);
+        if (aero.status) {
+          nextStatus = mergeAeroFlightStatus({
+            current: nextStatus,
+            aeroStatus: aero.status,
+            destinationChanged: Boolean(
+              aero.toIata && prev.arrivalIata && aero.toIata !== prev.arrivalIata,
+            ),
+            actualArr,
+          });
         }
         if (aero.lat != null && aero.lon != null) {
-          nextStatus = FlightStatus.EN_ROUTE;
+          // Location without onGround — do not resurrect terminal statuses.
+          if (!isTerminalStatus(nextStatus)) {
+            nextStatus = FlightStatus.EN_ROUTE;
+          }
           lastStatusSource = "aerodatabox";
           gotFix = true;
-          await persistLiveFix(flight.id, {
+          await persistLiveFix(row.id, {
             lat: aero.lat,
             lon: aero.lon,
             altitudeFt: aero.altitudeFt,
@@ -241,33 +290,31 @@ export async function pollFlight(flightId: string) {
             callsign: aero.callsign,
             source: "aerodatabox",
           });
-          flight.lastLat = aero.lat;
-          flight.lastLon = aero.lon;
+          row.lastLat = aero.lat;
+          row.lastLon = aero.lon;
         }
       }
     }
     if (!gotFix) {
-      const lastAt = flight.lastPositionAt;
+      const lastAt = row.lastPositionAt;
       const lastAgeMs = lastAt ? Date.now() - lastAt.getTime() : null;
       const lastFresh = lastAgeMs != null && lastAgeMs >= 0 && lastAgeMs <= LIVE_FIX_STALE_MS;
       if (!lastFresh) {
         const fr24 = await fetchFr24LivePosition({
-          flightId: flight.id,
-          icao24: flight.icao24,
-          callsign: flight.callsign,
-          flightNumber: flight.flightNumber,
+          flightId: row.id,
+          icao24: row.icao24,
+          callsign: row.callsign,
+          flightNumber: row.flightNumber,
           registration,
-          lastLat: flight.lastLat,
-          lastLon: flight.lastLon,
+          lastLat: row.lastLat,
+          lastLon: row.lastLon,
         });
         if (fr24) {
-          nextStatus =
-            fr24.onGround && nextStatus === FlightStatus.EN_ROUTE
-              ? FlightStatus.LANDED
-              : FlightStatus.EN_ROUTE;
+          lastOnGround = fr24.onGround;
+          nextStatus = fr24.onGround ? statusAfterGroundFix(nextStatus) : FlightStatus.EN_ROUTE;
           lastStatusSource = "fr24";
           gotFix = true;
-          await persistLiveFix(flight.id, {
+          await persistLiveFix(row.id, {
             lat: fr24.lat,
             lon: fr24.lon,
             altitudeFt: fr24.altitudeFt,
@@ -279,47 +326,57 @@ export async function pollFlight(flightId: string) {
             source: "fr24",
             observedAt: fr24.observedAt,
           });
-          flight.lastLat = fr24.lat;
-          flight.lastLon = fr24.lon;
-          flight.lastPositionAt = fr24.observedAt;
+          row.lastLat = fr24.lat;
+          row.lastLon = fr24.lon;
+          row.lastPositionAt = fr24.observedAt;
         }
       }
     }
-    if (
-      !gotFix &&
-      nextStatus !== FlightStatus.LANDED &&
-      nextStatus !== FlightStatus.CANCELLED &&
-      nextStatus !== FlightStatus.DIVERTED
-    ) {
-      const eta = actualArr ?? estimatedArr ?? flight.scheduledArr;
-      if (eta && eta < new Date()) {
-        nextStatus = FlightStatus.LANDED;
+
+    // Landed evidence from schedule/ADS-B even when a stale airborne fix exists.
+    if (!isTerminalStatus(nextStatus)) {
+      const now = new Date();
+      if (actualArr && actualArr.getTime() <= now.getTime()) {
+        nextStatus = destinationChanged ? FlightStatus.DIVERTED : FlightStatus.LANDED;
+      } else if (lastOnGround) {
+        nextStatus = statusAfterGroundFix(nextStatus);
+      } else if (!gotFix) {
+        const eta = actualArr ?? estimatedArr ?? row.scheduledArr;
+        if (eta && eta < now) nextStatus = FlightStatus.LANDED;
       }
+    }
+
+    // Alternate airport + on ground / arrived → diverted (not plain landed).
+    if (
+      destinationChanged &&
+      (nextStatus === FlightStatus.LANDED || lastOnGround || (actualArr && actualArr <= new Date()))
+    ) {
+      nextStatus = FlightStatus.DIVERTED;
     }
   }
 
   const schedule: PollScheduleInput = {
     status: nextStatus,
-    scheduledDep: flight.scheduledDep,
+    scheduledDep: row.scheduledDep,
     actualDep,
     estimatedDep,
-    scheduledArr: estimatedArr ?? flight.scheduledArr,
+    scheduledArr: estimatedArr ?? row.scheduledArr,
     estimatedArr,
-    lastLat: flight.lastLat,
-    lastLon: flight.lastLon,
-    lastPositionAt: flight.lastPositionAt,
+    lastLat: row.lastLat,
+    lastLon: row.lastLon,
+    lastPositionAt: row.lastPositionAt,
     actualArr,
-    departureAirport: flight.departureAirport,
-    arrivalAirport: flight.arrivalAirport,
+    departureAirport: row.departureAirport,
+    arrivalAirport,
   };
   const finalPhase = resolvePollPhase(schedule);
   const nextAt = nextPollAt(schedule);
 
-  await safeFlightUpdate(flight.id, {
+  await safeFlightUpdate(row.id, {
     status: nextStatus,
     gate: nextGate,
     delayMinutes: nextDelay,
-    scheduledArr: flight.scheduledArr,
+    scheduledArr: row.scheduledArr,
     estimatedDep,
     estimatedArr,
     actualDep,
@@ -333,11 +390,14 @@ export async function pollFlight(flightId: string) {
     lastSquawk: nextSquawk,
     pollPhase: finalPhase,
     nextPollAt: nextAt,
+    ...(nextArrivalAirportId !== row.arrivalAirportId
+      ? { arrivalAirportId: nextArrivalAirportId }
+      : {}),
   });
 
-  const userIds = flight.userFlights.filter((uf) => uf.pushAlerts).map((uf) => uf.userId);
+  const userIds = row.userFlights.filter((uf) => uf.pushAlerts).map((uf) => uf.userId);
   const flightForAlert = {
-    ...flight,
+    ...row,
     status: nextStatus,
     gate: nextGate,
     terminal,
@@ -348,6 +408,7 @@ export async function pollFlight(flightId: string) {
     estimatedArr,
     actualDep,
     actualArr,
+    arrivalAirport,
   };
 
   if (nextGate && nextGate !== prev.gate && userIds.length) {
@@ -360,7 +421,15 @@ export async function pollFlight(flightId: string) {
     });
   }
 
-  if (nextStatus !== prev.status && userIds.length) {
+  if (destinationChanged && userIds.length && nextStatus !== FlightStatus.CANCELLED) {
+    await notifyUsers({
+      userIds,
+      kind: "status",
+      flight: flightForAlert,
+      status: FlightStatus.DIVERTED,
+      delayMinutes: nextDelay,
+    });
+  } else if (nextStatus !== prev.status && userIds.length) {
     await notifyUsers({
       userIds,
       kind: "status",
@@ -380,18 +449,18 @@ export async function pollFlight(flightId: string) {
   }
 
   const timesChanged =
-    estimatedDep?.getTime() !== flight.estimatedDep?.getTime() ||
-    estimatedArr?.getTime() !== flight.estimatedArr?.getTime() ||
-    actualDep?.getTime() !== flight.actualDep?.getTime() ||
-    actualArr?.getTime() !== flight.actualArr?.getTime();
+    estimatedDep?.getTime() !== row.estimatedDep?.getTime() ||
+    estimatedArr?.getTime() !== row.estimatedArr?.getTime() ||
+    actualDep?.getTime() !== row.actualDep?.getTime() ||
+    actualArr?.getTime() !== row.actualArr?.getTime();
   if (timesChanged && finalPhase !== PollPhase.COMPLETE) {
-    for (const uf of flight.userFlights) {
+    for (const uf of row.userFlights) {
       await scheduleUserFlightReminders({
         userFlightId: uf.id,
-        flightId: flight.id,
+        flightId: row.id,
         userId: uf.userId,
-        scheduledDep: flight.scheduledDep,
-        scheduledArr: flight.scheduledArr,
+        scheduledDep: row.scheduledDep,
+        scheduledArr: row.scheduledArr,
         estimatedDep,
         estimatedArr,
         actualDep,
@@ -402,20 +471,20 @@ export async function pollFlight(flightId: string) {
   }
 
   if (finalPhase !== PollPhase.COMPLETE && nextAt) {
-    await scheduleFlightPoll(flight.id, nextAt);
+    await scheduleFlightPoll(row.id, nextAt);
   }
 
-  if (finalPhase === PollPhase.COMPLETE && flight.userFlights.some((uf) => uf.trackDaily)) {
+  if (finalPhase === PollPhase.COMPLETE && row.userFlights.some((uf) => uf.trackDaily)) {
     const { advanceRecurringFlights } = await import("./recurrence");
     const seen = new Set<string>();
-    for (const uf of flight.userFlights) {
+    for (const uf of row.userFlights) {
       if (!uf.trackDaily || seen.has(uf.userId)) continue;
       seen.add(uf.userId);
       await advanceRecurringFlights({
         userId: uf.userId,
-        flightNumber: flight.flightNumber,
-        fromIata: flight.departureAirport?.iata ?? null,
-        toIata: flight.arrivalAirport?.iata ?? null,
+        flightNumber: row.flightNumber,
+        fromIata: row.departureAirport?.iata ?? null,
+        toIata: arrivalAirport?.iata ?? null,
       });
     }
   }
