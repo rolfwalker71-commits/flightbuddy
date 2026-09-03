@@ -51,20 +51,50 @@ function clampQuotaRemaining(value: number | null): number | null {
 }
 
 export function parseAeroQuotaHeaders(headers: Headers): StoredQuota | null {
-  const apiUnitsRemaining = headerInt(headers, "x-ratelimit-api-units-remaining");
-  const apiUnitsLimit = headerInt(headers, "x-ratelimit-api-units-limit");
-  const requestsRemaining = headerInt(headers, "x-ratelimit-requests-remaining");
-  const requestsLimit = headerInt(headers, "x-ratelimit-requests-limit");
+  const apiUnitsRemaining = headerInt(
+    headers,
+    "x-ratelimit-api-units-remaining",
+    "x-api-units-remaining",
+    "x-quota-remaining",
+  );
+  const apiUnitsLimit = headerInt(
+    headers,
+    "x-ratelimit-api-units-limit",
+    "x-api-units-limit",
+    "x-quota-limit",
+  );
+  const requestsRemaining = headerInt(
+    headers,
+    "x-ratelimit-requests-remaining",
+    "x-ratelimit-remaining",
+    "x-rate-limit-remaining",
+    "ratelimit-remaining",
+  );
+  const requestsLimit = headerInt(
+    headers,
+    "x-ratelimit-requests-limit",
+    "x-ratelimit-limit",
+    "x-rate-limit-limit",
+    "ratelimit-limit",
+  );
   const resetSeconds = headerInt(
     headers,
     "x-ratelimit-api-units-reset",
     "x-ratelimit-requests-reset",
+    "x-ratelimit-reset",
+    "x-rate-limit-reset",
+    "retry-after",
   );
   const dailyRemaining = headerInt(
     headers,
     "x-ratelimit-rapid-free-plans-hard-limit-remaining",
+    "x-ratelimit-daily-remaining",
   );
-  const dailyLimit = headerInt(headers, "x-ratelimit-rapid-free-plans-hard-limit-limit");
+  const dailyLimit = headerInt(
+    headers,
+    "x-ratelimit-rapid-free-plans-hard-limit-limit",
+    "x-ratelimit-daily-limit",
+  );
   // Monthly API units (600 BASIC / 6000 Pro) — not x-ratelimit-requests-* (often still >0 when units are gone).
   const remaining =
     apiUnitsRemaining != null

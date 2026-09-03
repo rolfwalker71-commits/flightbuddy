@@ -262,30 +262,45 @@ export type AeroSearchReason =
   | "network_error"
   | "empty";
 
-/** Map RapidAPI HTTP failures to user-facing search reasons (429 body distinguishes monthly vs burst). */
+/** Map API.Market / RapidAPI HTTP failures to search reasons. */
 export function classifyAeroFailure(status: number, body: string): Exclude<AeroSearchReason, "ok"> {
   const msg = body.toLowerCase();
+  const invalidKey =
+    msg.includes("invalid_api_key") ||
+    msg.includes("invalid api key") ||
+    msg.includes("no valid api key") ||
+    msg.includes("invalid x-api-market-key") ||
+    msg.includes("invalid x-magicapi-key") ||
+    (msg.includes("invalid") && msg.includes("key")) ||
+    msg.includes("unauthorized") ||
+    (msg.includes("missing") && msg.includes("key"));
+  const notSubscribed =
+    msg.includes("not subscribed") ||
+    msg.includes("subscription_not_found") ||
+    msg.includes("subscription not found") ||
+    msg.includes("not subscribed to this api") ||
+    msg.includes("no subscription") ||
+    (msg.includes("subscription") && (msg.includes("inactive") || msg.includes("required"))) ||
+    msg.includes("exceed the maximum");
+
   if (status === 429) {
-    if (msg.includes("monthly")) return "monthly_quota";
-    if (msg.includes("per second") || msg.includes("per-second") || msg.includes("per minute")) {
-      return "rate_limited";
+    if (
+      msg.includes("monthly") ||
+      msg.includes("quota") ||
+      msg.includes("api units") ||
+      msg.includes("api-units") ||
+      msg.includes("plan limit")
+    ) {
+      return "monthly_quota";
     }
     return "rate_limited";
   }
-  if (status === 403) {
-    if (
-      msg.includes("not subscribed") ||
-      msg.includes("subscription") ||
-      msg.includes("not subscribed to this api") ||
-      msg.includes("exceed the maximum")
-    ) {
-      return "not_subscribed";
-    }
-    return "http_error";
-  }
-  if (status === 401 || (status === 403 && msg.includes("invalid") && msg.includes("key"))) {
+  if (status === 400 && invalidKey) return "not_subscribed";
+  if (status === 401 || invalidKey) return "not_subscribed";
+  if (status === 403 && (notSubscribed || invalidKey || msg.includes("forbidden"))) {
     return "not_subscribed";
   }
+  if (status === 404 && notSubscribed) return "not_subscribed";
   return "http_error";
 }
 
@@ -355,15 +370,27 @@ async function acquireAeroSlot(priority: "user" | "poll"): Promise<boolean> {
   }
 }
 
-async function fetchAero(path: string) {
-  const { aeroKey, aeroHost } = aeroConfig();
-  const started = Date.now();
-  const res = await fetch(`https://${aeroHost}${path}`, {
-    headers: {
-      "X-RapidAPI-Key": aeroKey!,
-      "X-RapidAPI-Host": aeroHost,
+function aeroRequestHeaders(key: string, marketplace: "apimarket" | "rapidapi", host: string) {
+  if (marketplace === "rapidapi") {
+    return {
+      "X-RapidAPI-Key": key,
+      "X-RapidAPI-Host": host,
       Accept: "application/json",
-    },
+    };
+  }
+  // Official API.Market OpenAPI: x-api-market-key. Legacy MagicAPI alias is still accepted.
+  return {
+    "x-api-market-key": key,
+    "x-magicapi-key": key,
+    Accept: "application/json",
+  };
+}
+
+async function fetchAero(path: string) {
+  const { aeroKey, aeroBaseUrl, aeroHost, marketplace } = aeroConfig();
+  const started = Date.now();
+  const res = await fetch(`${aeroBaseUrl}${path}`, {
+    headers: aeroRequestHeaders(aeroKey!, marketplace, aeroHost),
     cache: "no-store",
   });
   void persistAeroQuota(res.headers);
@@ -414,7 +441,11 @@ export async function lookupAeroDataBox(
     });
 
     if (res.status === 429) return { flights: [], reason: classifyAeroFailure(res.status, text) };
-    if (res.status === 204 || res.status === 404) return { flights: [], reason: "empty" };
+    if (res.status === 204) return { flights: [], reason: "empty" };
+    if (res.status === 404) {
+      const classified = classifyAeroFailure(res.status, text);
+      return { flights: [], reason: classified === "http_error" ? "empty" : classified };
+    }
     if (!res.ok) return { flights: [], reason: classifyAeroFailure(res.status, text) };
 
     const flights = rowsFromAeroBody(text).map(mapAero);
@@ -623,6 +654,10 @@ export async function lookupAeroByAircraft(opts: {
         return { flights: [], reason: classifyAeroFailure(range.res.status, range.text) };
       }
       if (range.res.status === 204) return { flights: [], reason: "empty" };
+      if (range.res.status === 404) {
+        const classified = classifyAeroFailure(range.res.status, range.text);
+        if (classified === "not_subscribed") return { flights: [], reason: classified };
+      }
       if (range.res.ok) {
         const flights = rowsFromAeroBody(range.text).map(mapAero);
         return { flights, reason: flights.length ? "ok" : "empty" };
@@ -659,6 +694,14 @@ export async function lookupAeroByAircraft(opts: {
         return { flights: [], reason: lastReason };
       }
       if (day.res.status === 204 || day.res.status === 404) {
+        if (day.res.status === 404) {
+          const classified = classifyAeroFailure(day.res.status, day.text);
+          if (classified === "not_subscribed") {
+            lastReason = classified;
+            if (batches.some((b) => b.length)) break;
+            return { flights: [], reason: classified };
+          }
+        }
         lastReason = "empty";
         continue;
       }

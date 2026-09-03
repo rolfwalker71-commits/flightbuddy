@@ -49,7 +49,7 @@ Do not run `docker compose up --build` on the server.
 | Service | Required? | Where to register | Env vars |
 |---|---|---|---|
 | **OpenSky Network** | Recommended | [Create an OpenSky account](https://opensky-network.org/index.php?option=com_users&view=registration) | `OPENSKY_USERNAME`, `OPENSKY_PASSWORD` |
-| **AeroDataBox (RapidAPI)** | Optional | [AeroDataBox on RapidAPI](https://rapidapi.com/aedbx-aedbx/api/aerodatabox) | `AERODATABOX_KEY` |
+| **AeroDataBox (API.Market)** | Optional | [AeroDataBox on API.Market](https://api.market/store/aedbx/aerodatabox) | `AERODATABOX_KEY`, `AERODATABOX_BASE_URL` |
 | **Web Push VAPID** | Automatic | Keys are generated on first boot and stored in `AppSetting`. Optional env override. | — |
 | **OurAirports / OpenFlights** | No signup | Imported from Settings (admin) | — |
 | **Carto / OSM tiles** | No signup | Used client-side for the dark map | — |

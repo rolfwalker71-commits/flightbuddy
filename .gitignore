@@ -37,6 +37,9 @@ yarn-error.log*
 /prisma/dev.db
 /prisma/dev.db-journal
 
+# local user-space Postgres / Redis (WSL without Docker)
+.data/
+
 # misc
 .DS_Store
 *.pem

@@ -12,7 +12,10 @@ export const env = {
   // Must be a static `process.env.AERODATABOX_KEY` access. Next/Turbopack does not
   // expose secrets through dynamic `process.env[name]`, which left search unconfigured.
   aeroKey: trimEnv(process.env.AERODATABOX_KEY),
-  aeroHost: trimEnv(process.env.AERODATABOX_HOST) ?? "aerodatabox.p.rapidapi.com",
+  // API.Market is the default. RapidAPI host (aerodatabox.p.rapidapi.com) is wrong for API Market keys.
+  aeroBaseUrl:
+    trimEnv(process.env.AERODATABOX_BASE_URL) ?? "https://prod.api.market/api/v1/aedbx/aerodatabox",
+  aeroHost: trimEnv(process.env.AERODATABOX_HOST) ?? "prod.api.market",
   vapidPublic: trimEnv(process.env.VAPID_PUBLIC_KEY),
   vapidPrivate: trimEnv(process.env.VAPID_PRIVATE_KEY),
   vapidSubject: trimEnv(process.env.VAPID_SUBJECT) ?? "mailto:flightbuddy@localhost",
