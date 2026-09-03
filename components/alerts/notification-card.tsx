@@ -42,11 +42,20 @@ export function NotificationCard({
           <>
             <div className="flex items-start justify-between gap-3">
               <p className="min-w-0 break-words font-medium">{title}</p>
-              {(kind === "object_airborne" || kind === "object_landed") && (
+              {(kind === "object_airborne" ||
+                kind === "object_landed" ||
+                kind === "squawk" ||
+                kind.startsWith("squawk_")) && (
                 <Badge variant={eventBadgeVariant(kind)} className="shrink-0">
                   {kind === "object_airborne"
                     ? t(locale, "alerts.eventObjectAirborne")
-                    : t(locale, "alerts.eventObjectLanded")}
+                    : kind === "object_landed"
+                      ? t(locale, "alerts.eventObjectLanded")
+                      : t(
+                          locale,
+                          "alerts.eventSquawkGeneric",
+                          { code: kind.replace(/^squawk_/, "") || "—" },
+                        )}
                 </Badge>
               )}
             </div>

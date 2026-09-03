@@ -27,6 +27,7 @@ export async function notifyUsers(opts: {
   gate?: string | null;
   terminal?: string | null;
   delayMinutes?: number | null;
+  squawk?: string | null;
 }) {
   const [prefs, users] = await Promise.all([
     prisma.notificationPreference.findMany({
@@ -54,6 +55,7 @@ export async function notifyUsers(opts: {
     if (opts.kind === "preflight") return p.preflight2h;
     if (opts.kind === "gate_close") return p.gateClose !== false;
     if (opts.kind === "arrival_soon") return p.arrivalSoon !== false;
+    if (opts.kind === "squawk") return p.squawkAlerts !== false;
     if (opts.kind === "object") return p.objectAlerts !== false;
     return true;
   });
@@ -76,6 +78,7 @@ export async function notifyUsers(opts: {
           gate: opts.gate,
           terminal: opts.terminal,
           delayMinutes: opts.delayMinutes,
+          squawk: opts.squawk,
         });
         return [
           id,

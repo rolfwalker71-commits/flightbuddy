@@ -133,6 +133,7 @@ model Flight {
   lastHeading        Float?
   lastOnGround       Boolean?
   lastPositionAt     DateTime?
+  lastSquawk         String?
   pollPhase          PollPhase     @default(INACTIVE)
   nextPollAt         DateTime?
   lastStatusSource   String?
@@ -246,6 +247,7 @@ model TrackedAircraft {
   lastOnGround   Boolean?
   lastSeenAt     DateTime?
   lastAirborneAt DateTime?
+  lastSquawk     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   events         TrackedAircraftEvent[]
@@ -281,6 +283,7 @@ model NotificationPreference {
   gateClose    Boolean @default(true)
   arrivalSoon  Boolean @default(true)
   objectAlerts Boolean @default(true)
+  squawkAlerts Boolean @default(true)
 }
 
 model Notification {

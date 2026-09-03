@@ -11,6 +11,7 @@ const schema = z.object({
   gateClose: z.boolean().optional(),
   arrivalSoon: z.boolean().optional(),
   objectAlerts: z.boolean().optional(),
+  squawkAlerts: z.boolean().optional(),
 });
 
 export async function PATCH(req: Request) {

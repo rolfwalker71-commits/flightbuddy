@@ -2,7 +2,8 @@ import { prisma } from "./db";
 import { objectLabel, resolveOperator } from "./operator";
 import { fetchOpenSkyByIcao24s, openSkyToTelemetry } from "./opensky";
 import { notifyUsers } from "./push";
-import { buildObjectAlertCopy } from "./alert-copy";
+import { buildObjectAlertCopy, buildObjectSquawkAlertCopy } from "./alert-copy";
+import { shouldAlertEmergencySquawk, isEmergencySquawk } from "./squawk";
 import type {
   TrackedAircraftHistory,
   TrackedAircraftInput,
@@ -193,6 +194,8 @@ export async function pollTrackedAircraft() {
       airlineIata: row.airlineIata,
     });
     const airborne = !tel.onGround;
+    const squawk = tel.squawk ?? null;
+    const fireSquawk = shouldAlertEmergencySquawk(row.lastSquawk, squawk);
 
     if (airborne) {
       const wasGroundOrUnknown = row.lastOnGround !== false;
@@ -207,6 +210,7 @@ export async function pollTrackedAircraft() {
           lastOnGround: false,
           lastSeenAt: now,
           lastAirborneAt: now,
+          ...(squawk != null ? { lastSquawk: squawk } : {}),
         },
       });
       if (wasGroundOrUnknown && !debounce) {
@@ -236,6 +240,21 @@ export async function pollTrackedAircraft() {
         });
         notified += 1;
       }
+      if (fireSquawk && isEmergencySquawk(squawk)) {
+        await notifyUsers({
+          userIds: [row.userId],
+          kind: "squawk",
+          build: (locale) => {
+            const copy = buildObjectSquawkAlertCopy({
+              locale,
+              callsign,
+              squawk,
+            });
+            return { title: copy.title, body: copy.body, kind: copy.persistKind, url: copy.url };
+          },
+        });
+        notified += 1;
+      }
       continue;
     }
 
@@ -248,6 +267,7 @@ export async function pollTrackedAircraft() {
         airlineIata: resolved.airlineIata,
         lastOnGround: true,
         lastSeenAt: now,
+        ...(squawk != null ? { lastSquawk: squawk } : {}),
       },
     });
     if (wasAirborne) {
@@ -271,6 +291,21 @@ export async function pollTrackedAircraft() {
             callsign,
             altitudeFt: tel.altitudeFt,
             speedKts: tel.velocityKts,
+          });
+          return { title: copy.title, body: copy.body, kind: copy.persistKind, url: copy.url };
+        },
+      });
+      notified += 1;
+    }
+    if (fireSquawk && isEmergencySquawk(squawk)) {
+      await notifyUsers({
+        userIds: [row.userId],
+        kind: "squawk",
+        build: (locale) => {
+          const copy = buildObjectSquawkAlertCopy({
+            locale,
+            callsign,
+            squawk,
           });
           return { title: copy.title, body: copy.body, kind: copy.persistKind, url: copy.url };
         },

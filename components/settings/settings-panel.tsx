@@ -17,7 +17,15 @@ import { TrackedObjectsList } from "@/components/map/tracked-objects-list";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
 
-type PrefKey = "webPush" | "gateChanges" | "delaysStatus" | "preflight2h" | "gateClose" | "arrivalSoon" | "objectAlerts";
+type PrefKey =
+  | "webPush"
+  | "gateChanges"
+  | "delaysStatus"
+  | "preflight2h"
+  | "gateClose"
+  | "arrivalSoon"
+  | "objectAlerts"
+  | "squawkAlerts";
 
 type ProviderUsage = {
   configured: boolean;
@@ -161,6 +169,13 @@ export function SettingsPanel({
               label={t("settings.objectAlerts")}
               checked={local.objectAlerts !== false}
               onChange={(v) => updatePref("objectAlerts", v)}
+            />
+          </Card>
+          <Card>
+            <PrefRow
+              label={t("settings.squawkAlerts")}
+              checked={local.squawkAlerts !== false}
+              onChange={(v) => updatePref("squawkAlerts", v)}
             />
           </Card>
         </div>

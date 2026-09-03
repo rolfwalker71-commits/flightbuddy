@@ -36,6 +36,8 @@ import {
 } from "@/lib/i18n/format";
 import { useLiveFlights } from "@/lib/use-live-flights";
 import type { TripView } from "@/lib/trips";
+import { Badge } from "@/components/ui/badge";
+import { isEmergencySquawk, squawkLabel } from "@/lib/squawk";
 
 export function FlightDetailView({
   row: initial,
@@ -171,8 +173,20 @@ export function FlightDetailView({
           />
         </div>
 
-        <div className="mt-5 flex items-center justify-between">
-          <StatusBadge status={flight.status} delayMinutes={flight.delayMinutes} />
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={flight.status} delayMinutes={flight.delayMinutes} />
+            {flight.lastSquawk && (
+              <Badge variant={isEmergencySquawk(flight.lastSquawk) ? "destructive" : "default"}>
+                {isEmergencySquawk(flight.lastSquawk)
+                  ? t("flight.squawkEmergency", {
+                      code: flight.lastSquawk,
+                      meaning: squawkLabel(locale, flight.lastSquawk),
+                    })
+                  : t("flight.squawk", { code: flight.lastSquawk })}
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">{t("flight.seat", { seat: row.seat ?? "—" })}</p>
         </div>
         <div className={cn(tileClassName, "mt-4 p-3")}>

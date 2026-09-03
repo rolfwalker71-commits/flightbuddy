@@ -6,6 +6,7 @@ import { boundingBox, type LatLon } from "./geo";
 import { getStoredOpenSkyRemaining, persistOpenSkyQuota, parseOpenSkyQuotaHeaders } from "./api-quota";
 import type { ViewportBounds } from "./viewport-traffic";
 import { candidateCallsigns, matchesCallsign, normalizeCallsign } from "./callsign";
+import { normalizeSquawk } from "./squawk";
 
 export { candidateCallsigns, matchesCallsign, normalizeCallsign };
 
@@ -25,6 +26,7 @@ export type OpenSkyState = {
   trueTrack: number | null;
   onGround: boolean;
   lastContact: number | null;
+  squawk: string | null;
 };
 
 type CachedToken = { token: string; expiresAt: number };
@@ -51,6 +53,7 @@ function parseStates(rows: unknown[]): OpenSkyState[] {
         trueTrack: asNumber(row[10]),
         lastContact: asNumber(row[4]),
         geoAltitude: asNumber(row[13]),
+        squawk: normalizeSquawk(row[14]),
       } satisfies OpenSkyState;
     })
     .filter((s): s is OpenSkyState => Boolean(s?.icao24));
@@ -302,6 +305,7 @@ export function openSkyToTelemetry(state: OpenSkyState) {
     velocityKts: state.velocity != null ? state.velocity * 1.94384 : null,
     heading: state.trueTrack,
     onGround: state.onGround,
+    squawk: state.squawk,
     status: state.onGround ? FlightStatus.DEPARTED : FlightStatus.EN_ROUTE,
   };
 }

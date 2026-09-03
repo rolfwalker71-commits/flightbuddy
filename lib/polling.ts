@@ -9,6 +9,7 @@ import { nextPollAt, resolvePollPhase, type PollScheduleInput } from "./flight-s
 import { getUserFlight } from "./flights";
 import { scheduleFlightPoll, scheduleUserFlightReminders } from "./queue";
 import { env } from "./env";
+import { shouldAlertEmergencySquawk } from "./squawk";
 
 type LiveFix = {
   lat: number;
@@ -19,6 +20,7 @@ type LiveFix = {
   onGround?: boolean;
   icao24?: string | null;
   callsign?: string | null;
+  squawk?: string | null;
   source: string;
   observedAt?: Date;
 };
@@ -66,6 +68,7 @@ async function persistLiveFix(flightId: string, fix: LiveFix) {
     lastHeading: fix.heading ?? null,
     lastOnGround: fix.onGround ?? false,
     lastPositionAt: observedAt,
+    ...(fix.squawk !== undefined ? { lastSquawk: fix.squawk } : {}),
   });
 }
 
@@ -101,6 +104,8 @@ export async function pollFlight(flightId: string) {
   let aircraftType = flight.aircraftType;
   let registration = flight.registration;
   let lastStatusSource = flight.lastStatusSource;
+  let nextSquawk = flight.lastSquawk ?? null;
+  let squawkAlertCode: string | null = null;
 
   if (phase === PollPhase.INACTIVE || phase === PollPhase.PREFLIGHT || phase === PollPhase.AIRBORNE) {
     const aero = await searchAeroDataBox(flight.flightNumber, flight.scheduledDep);
@@ -167,6 +172,12 @@ export async function pollFlight(flightId: string) {
         : tel.status;
       lastStatusSource = "opensky";
       gotFix = true;
+      if (tel.squawk) {
+        if (shouldAlertEmergencySquawk(flight.lastSquawk, tel.squawk)) {
+          squawkAlertCode = tel.squawk;
+        }
+        nextSquawk = tel.squawk;
+      }
       await persistLiveFix(flight.id, {
         lat: state.lat,
         lon: state.lon,
@@ -176,14 +187,24 @@ export async function pollFlight(flightId: string) {
         onGround: tel.onGround,
         icao24: tel.icao24,
         callsign: tel.callsign,
+        squawk: tel.squawk,
         source: "opensky",
       });
       flight.lastLat = state.lat;
       flight.lastLon = state.lon;
+      if (tel.squawk) flight.lastSquawk = tel.squawk;
     } else {
       if (state?.icao24) {
         await persistIdentity(flight.id, { icao24: state.icao24, callsign: state.callsign });
         flight.icao24 = state.icao24;
+      }
+      if (state?.squawk) {
+        if (shouldAlertEmergencySquawk(flight.lastSquawk, state.squawk)) {
+          squawkAlertCode = state.squawk;
+        }
+        nextSquawk = state.squawk;
+        await safeFlightUpdate(flight.id, { lastSquawk: state.squawk });
+        flight.lastSquawk = state.squawk;
       }
       const aero = await lookupAeroLiveTelemetry(flight.flightNumber, flight.scheduledDep, {
         fromIata: flight.departureAirport?.iata,
@@ -309,6 +330,7 @@ export async function pollFlight(flightId: string) {
     aircraftType,
     registration,
     lastStatusSource,
+    lastSquawk: nextSquawk,
     pollPhase: finalPhase,
     nextPollAt: nextAt,
   });
@@ -345,6 +367,15 @@ export async function pollFlight(flightId: string) {
       flight: flightForAlert,
       status: nextStatus,
       delayMinutes: nextDelay,
+    });
+  }
+
+  if (squawkAlertCode && userIds.length) {
+    await notifyUsers({
+      userIds,
+      kind: "squawk",
+      flight: flightForAlert,
+      squawk: squawkAlertCode,
     });
   }
 

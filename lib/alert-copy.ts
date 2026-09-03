@@ -4,11 +4,20 @@ import { isLegDelayed, resolveLegTimes, type LegTimes } from "./flight-times";
 import { formatAltitude, formatClock, formatSpeed, formatStand, formatTimeZoneName, statusText } from "./i18n/format";
 import { t, type Locale, type Units } from "./i18n/messages";
 import { displayFlightNumber } from "./utils";
+import { isEmergencySquawk, squawkEventKind, squawkLabel, type EmergencySquawk } from "./squawk";
 
 export const PUSH_TITLE_MAX = 50;
 export const PUSH_BODY_MAX = 150;
 
-export type NotifyKind = "gate" | "status" | "preflight" | "gate_close" | "arrival_soon" | "generic" | "object";
+export type NotifyKind =
+  | "gate"
+  | "status"
+  | "preflight"
+  | "gate_close"
+  | "arrival_soon"
+  | "squawk"
+  | "generic"
+  | "object";
 
 export type AlertAirport = {
   iata?: string | null;
@@ -44,6 +53,7 @@ export type AlertCopyInput = {
   gate?: string | null;
   terminal?: string | null;
   delayMinutes?: number | null;
+  squawk?: string | null;
 };
 
 export type AlertCopy = {
@@ -66,6 +76,7 @@ const STATUS_KIND: Record<string, FlightStatus> = {
 };
 
 export function persistAlertKind(kind: NotifyKind, status?: FlightStatus | string | null): string {
+  if (kind === "squawk") return "squawk";
   if (kind !== "status") return kind;
   switch (status) {
     case FlightStatus.LANDED:
@@ -105,11 +116,18 @@ export function alertEventLabel(
   kind: string,
   status?: string | null,
   delayMinutes?: number | null,
+  squawk?: string | null,
 ): string {
   if (kind === "preflight") return t(locale, "alerts.eventPreflight");
   if (kind === "gate_close") return t(locale, "alerts.eventGateClose");
   if (kind === "arrival_soon") return t(locale, "alerts.eventArrivalSoon");
   if (kind === "gate") return t(locale, "alerts.eventGate");
+  if (kind === "squawk" || kind.startsWith("squawk_")) {
+    const code = squawk ?? kind.replace(/^squawk_/, "");
+    return isEmergencySquawk(code)
+      ? t(locale, "alerts.eventSquawk", { code, meaning: squawkLabel(locale, code) })
+      : t(locale, "alerts.eventSquawkGeneric", { code });
+  }
   if (kind === "object_airborne") return t(locale, "alerts.eventObjectAirborne");
   if (kind === "object_landed") return t(locale, "alerts.eventObjectLanded");
   const fromKind = STATUS_KIND[kind];
@@ -204,9 +222,13 @@ export function buildAlertCopy(input: AlertCopyInput): AlertCopy {
   const units = input.units ?? "metric";
   const status = resolveStatus(input);
   const delayMinutes = resolveDelay(input);
-  const persistKind = persistAlertKind(input.kind, status);
+  const squawk = input.squawk ?? null;
+  const persistKind =
+    input.kind === "squawk" && isEmergencySquawk(squawk)
+      ? squawkEventKind(squawk)
+      : persistAlertKind(input.kind, status);
   const code = displayFlightNumber(input.flight.flightNumber);
-  const event = alertEventLabel(locale, persistKind, String(status), delayMinutes);
+  const event = alertEventLabel(locale, persistKind, String(status), delayMinutes, squawk);
   const title =
     input.kind === "preflight"
       ? t(locale, "push.preflightTitle", { code })
@@ -214,9 +236,15 @@ export function buildAlertCopy(input: AlertCopyInput): AlertCopy {
         ? t(locale, "push.gateCloseTitle", { code })
         : input.kind === "arrival_soon"
           ? t(locale, "push.arrivalSoonTitle", { code })
-          : input.kind === "gate"
-            ? t(locale, "push.gateTitle", { code })
-            : t(locale, "push.statusTitle", { code, status: event });
+          : input.kind === "squawk" && isEmergencySquawk(squawk)
+            ? t(locale, "push.squawkTitle", {
+                code,
+                squawk,
+                meaning: squawkLabel(locale, squawk),
+              })
+            : input.kind === "gate"
+              ? t(locale, "push.gateTitle", { code })
+              : t(locale, "push.statusTitle", { code, status: event });
 
   const leg = alertLeg(input.flight, persistKind, String(status), input.gate, input.terminal);
   const stand =
@@ -226,7 +254,12 @@ export function buildAlertCopy(input: AlertCopyInput): AlertCopy {
   const times = pushTimePart(locale, units, leg.times, leg.zone);
   let body = joinDot([alertRouteLine(input.flight), times, stand]);
 
-  if (!body && input.kind === "preflight") {
+  if (input.kind === "squawk" && isEmergencySquawk(squawk)) {
+    body = joinDot([
+      alertRouteLine(input.flight),
+      t(locale, "push.squawkBody", { squawk, meaning: squawkLabel(locale, squawk) }),
+    ]);
+  } else if (!body && input.kind === "preflight") {
     body = t(locale, "push.preflightFallback");
   } else if (!body && input.kind === "gate_close") {
     body = t(locale, "push.gateCloseFallback");
@@ -275,10 +308,19 @@ export function alertCardModel(
     kind === "gate" ||
     kind === "gate_close" ||
     kind === "arrival_soon" ||
+    kind === "squawk" ||
+    kind.startsWith("squawk_") ||
     Boolean(STATUS_KIND[kind])
       ? kind
       : persistAlertKind("status", flight.status);
-  const event = alertEventLabel(locale, eventKind, String(flight.status), flight.delayMinutes);
+  const squawkFromKind = kind.startsWith("squawk_") ? kind.replace(/^squawk_/, "") : null;
+  const event = alertEventLabel(
+    locale,
+    eventKind,
+    String(flight.status),
+    flight.delayMinutes,
+    squawkFromKind,
+  );
   const leg = alertLeg(flight, eventKind, String(flight.status));
   const plannedClock = leg.times.planned ? formatClock(leg.times.planned, units, leg.zone) : null;
   const effectiveClock = leg.times.effective ? formatClock(leg.times.effective, units, leg.zone) : null;
@@ -329,9 +371,33 @@ export function buildObjectAlertCopy(opts: {
   };
 }
 
+export function buildObjectSquawkAlertCopy(opts: {
+  locale: Locale;
+  callsign: string;
+  squawk: EmergencySquawk;
+}): AlertCopy {
+  const locale = opts.locale;
+  const meaning = squawkLabel(locale, opts.squawk);
+  const title = t(locale, "push.objectSquawkTitle", {
+    callsign: opts.callsign,
+    squawk: opts.squawk,
+  });
+  const body = t(locale, "push.squawkBody", { squawk: opts.squawk, meaning });
+  const persistKind = squawkEventKind(opts.squawk);
+  return {
+    title: clampPushText(title, PUSH_TITLE_MAX),
+    body: clampPushText(body, PUSH_BODY_MAX),
+    event: alertEventLabel(locale, persistKind, null, null, opts.squawk),
+    persistKind,
+    flightId: "",
+    url: "/map",
+  };
+}
+
 export function eventBadgeVariant(
   kind: string,
 ): "live" | "success" | "warning" | "destructive" | "default" {
+  if (kind === "squawk" || kind.startsWith("squawk_")) return "destructive";
   if (
     kind === "preflight" ||
     kind === "gate_close" ||
