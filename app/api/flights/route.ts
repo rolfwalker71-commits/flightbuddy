@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FlightStatus } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/db";
 import { saveUserFlight } from "@/lib/flights";
 
 const statuses = [
@@ -50,12 +51,24 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true },
+  });
+  if (!user) {
+    return NextResponse.json(
+      { error: "SESSION_EXPIRED", code: "SESSION_EXPIRED" },
+      { status: 401 },
+    );
+  }
+
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid flight" }, { status: 400 });
   try {
     const saved = await saveUserFlight({
-      userId: session.user.id,
+      userId: user.id,
       result: {
         ...parsed.data,
         status: (parsed.data.status as FlightStatus | undefined) ?? FlightStatus.SCHEDULED,
@@ -66,9 +79,13 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ id: saved.flight.id });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not save flight" },
-      { status: 500 },
-    );
+    const message = error instanceof Error ? error.message : "Could not save flight";
+    if (/Foreign key constraint|UserFlight_userId_fkey/i.test(message)) {
+      return NextResponse.json(
+        { error: "SESSION_EXPIRED", code: "SESSION_EXPIRED" },
+        { status: 401 },
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -370,7 +370,11 @@ async function acquireAeroSlot(priority: "user" | "poll"): Promise<boolean> {
   }
 }
 
-function aeroRequestHeaders(key: string, marketplace: "apimarket" | "rapidapi", host: string) {
+function aeroRequestHeaders(
+  key: string,
+  marketplace: "apimarket" | "rapidapi",
+  host: string,
+): Record<string, string> {
   if (marketplace === "rapidapi") {
     return {
       "X-RapidAPI-Key": key,

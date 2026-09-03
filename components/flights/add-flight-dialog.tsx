@@ -17,7 +17,7 @@ import { FlightStatus } from "@prisma/client";
 import { cn, displayFlightNumber, parseFlightQuery } from "@/lib/utils";
 import type { FlightSearchEmptyReason, FlightSearchResult } from "@/lib/flights";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
-import { formatClock, formatStand } from "@/lib/i18n/format";
+import { formatClock, formatDay, formatStand } from "@/lib/i18n/format";
 import { airportTimeZone } from "@/lib/airport-tz";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { AirlineLogo } from "./airline-logo";
@@ -126,6 +126,11 @@ export function AddFlightDialog({ triggerLabel, fab }: { triggerLabel?: string; 
         body: JSON.stringify({ ...result, trackDaily }),
       });
       const json = await res.json();
+      if (res.status === 401 || json.code === "SESSION_EXPIRED") {
+        setError(t("flight.sessionExpired"));
+        window.location.href = "/register";
+        return;
+      }
       if (!res.ok) throw new Error(json.error ?? t("flight.saveFailed"));
       setOpen(false);
       window.location.reload();
@@ -231,7 +236,18 @@ export function AddFlightDialog({ triggerLabel, fab }: { triggerLabel?: string; 
                   <div className="flex min-w-0 items-center gap-2">
                     <AirlineLogo iata={result.airlineIata} name={result.airlineName} />
                     <div className="min-w-0">
-                      <p className="font-medium">{displayFlightNumber(result.flightNumber)}</p>
+                      <p className="font-medium">
+                        {displayFlightNumber(result.flightNumber)}
+                        {result.scheduledDep ? (
+                          <span className="ml-2 font-normal text-muted-foreground">
+                            {formatDay(
+                              result.scheduledDep,
+                              units,
+                              airportTimeZone(result.fromIata, result.fromTimezone),
+                            )}
+                          </span>
+                        ) : null}
+                      </p>
                       <p className="break-words text-sm text-muted-foreground">{result.airlineName}</p>
                       {(result.aircraftType || result.registration) && (
                         <p className="text-xs text-muted-foreground">
