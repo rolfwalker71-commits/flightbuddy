@@ -17,9 +17,9 @@ import { fabClass, fabClearance } from "@/lib/platform";
 import { isLiveStatus } from "@/lib/flight-status";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { greeting } from "@/lib/i18n/format";
-import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
-import type { TripView } from "@/lib/trips";
-import { connectionByFlightId, tripIdByFlightId } from "@/lib/trips";
+import type { TripView } from "@/lib/trips-shared";
+import { connectionByFlightId, tripIdByFlightId } from "@/lib/trips-shared";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 
 const tabs = [
   { id: "upcoming" as const, labelKey: "home.upcoming" as const },

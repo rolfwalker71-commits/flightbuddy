@@ -16,7 +16,7 @@ import {
   readFlag,
   writeFlag,
 } from "@/lib/map-camera";
-import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import { useViewportTraffic } from "@/lib/use-viewport-traffic";
 import {

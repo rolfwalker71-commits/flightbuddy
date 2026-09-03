@@ -15,7 +15,7 @@ import { MAP_STYLE_IDS, MAP_STYLES } from "@/lib/map-styles";
 import { ChromeSwitcher } from "@/components/chrome/chrome-switcher";
 import { TrackedObjectsList } from "@/components/map/tracked-objects-list";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
-import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 
 type PrefKey =
   | "webPush"

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { tileClassName } from "@/components/ui/card";
 import { cn, displayFlightNumber } from "@/lib/utils";
 import { useT } from "@/components/i18n/prefs-provider";
-import { suggestConnections, type ConnectionInfo, type TripView } from "@/lib/trips";
+import { suggestConnections, type ConnectionInfo, type TripView } from "@/lib/trips-shared";
 import type { UserFlightView } from "@/lib/flight-view";
 import { useRouter } from "next/navigation";
 

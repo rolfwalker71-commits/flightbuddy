@@ -11,7 +11,7 @@ import { formatStand } from "@/lib/i18n/format";
 import { flightMetrics, toMapFlight, type FlightWithRelations } from "@/lib/flight-view";
 import { displayFlightNumber } from "@/lib/utils";
 import type { SharePayload } from "@/lib/share";
-import { connectionBetween, type ConnectionInfo } from "@/lib/trips";
+import { connectionBetween, type ConnectionInfo } from "@/lib/trips-shared";
 import { ConnectionBadge } from "@/components/flights/trip-panel";
 
 function SharedLeg({ flight }: { flight: FlightWithRelations }) {

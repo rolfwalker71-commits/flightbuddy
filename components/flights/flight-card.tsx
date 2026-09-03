@@ -26,7 +26,7 @@ import { AirlineLogo } from "./airline-logo";
 import { AircraftHistoryControl } from "./aircraft-history";
 import { RecurringMark, TrackDailyToggle } from "./track-daily-toggle";
 import { ConnectionBadge } from "./trip-panel";
-import type { ConnectionInfo } from "@/lib/trips";
+import type { ConnectionInfo } from "@/lib/trips-shared";
 
 export function FlightCard({
   row,

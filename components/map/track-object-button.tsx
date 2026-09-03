@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/components/i18n/prefs-provider";
 import { displayCallsign } from "@/lib/callsign";
 import type { ViewportTrafficAircraft } from "@/lib/viewport-traffic";
-import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 
 export function TrackObjectButton({
   aircraft,

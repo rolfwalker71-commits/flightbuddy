@@ -39,7 +39,7 @@ import { RecurringMark, TrackDailyToggle } from "@/components/flights/track-dail
 import { useLiveFlights } from "@/lib/use-live-flights";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import { useViewportTraffic } from "@/lib/use-viewport-traffic";
-import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 import { displayCallsign } from "@/lib/callsign";
 import { TrackObjectButton } from "./track-object-button";
 import { TrackedObjectsList } from "./tracked-objects-list";

@@ -35,7 +35,7 @@ import {
   metricLabel,
 } from "@/lib/i18n/format";
 import { useLiveFlights } from "@/lib/use-live-flights";
-import type { TripView } from "@/lib/trips";
+import type { TripView } from "@/lib/trips-shared";
 import { Badge } from "@/components/ui/badge";
 import { isEmergencySquawk, squawkLabel } from "@/lib/squawk";
 
