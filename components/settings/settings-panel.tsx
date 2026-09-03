@@ -251,7 +251,7 @@ export function SettingsPanel({
             <ProviderUsageRow
               name={t("settings.aeroName")}
               usage={apiUsage?.aerodatabox}
-              remainingKind="requests"
+              remainingKind="apiUnits"
             />
             <div className="space-y-2">
               <ProviderUsageRow
@@ -316,7 +316,7 @@ function ProviderUsageRow({
   name: string;
   usage?: ProviderUsage;
   fallbackHealthy?: boolean;
-  remainingKind: "credits" | "requests";
+  remainingKind: "credits" | "requests" | "apiUnits";
 }) {
   const t = useT();
   const configured = usage?.configured ?? fallbackHealthy != null;
@@ -350,12 +350,16 @@ function RemainingLine({
   remainingKind,
 }: {
   usage: ProviderUsage;
-  remainingKind: "credits" | "requests";
+  remainingKind: "credits" | "requests" | "apiUnits";
 }) {
   const t = useT();
   const lines: string[] = [];
   if (usage.remaining != null && usage.limit != null) {
-    lines.push(t("settings.remainingApiLimit", { n: usage.remaining, limit: usage.limit }));
+    lines.push(
+      remainingKind === "apiUnits"
+        ? t("settings.remainingApiUnits", { n: usage.remaining, limit: usage.limit })
+        : t("settings.remainingApiLimit", { n: usage.remaining, limit: usage.limit }),
+    );
   } else if (usage.remaining != null && remainingKind === "credits") {
     lines.push(t("settings.remainingCredits", { n: usage.remaining }));
   } else if (usage.remaining != null) {

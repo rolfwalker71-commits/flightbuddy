@@ -12,6 +12,8 @@ export type FlightSearchEmptyReason =
   | "unknown_query"
   | "unconfigured"
   | "rate_limited"
+  | "monthly_quota"
+  | "not_subscribed"
   | "api_error"
   | "not_found";
 
@@ -62,6 +64,8 @@ export async function searchFlights(query: string, date: Date): Promise<FlightSe
     const aero = await lookupAeroDataBox(parsed.flightNumber, date, { priority: "user" });
     if (aero.reason === "unconfigured") return empty("unconfigured");
     if (aero.reason === "rate_limited") return empty("rate_limited");
+    if (aero.reason === "monthly_quota") return empty("monthly_quota");
+    if (aero.reason === "not_subscribed") return empty("not_subscribed");
     if (aero.reason === "http_error" || aero.reason === "network_error") {
       return empty("api_error");
     }

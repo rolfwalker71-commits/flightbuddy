@@ -256,9 +256,38 @@ export type AeroSearchReason =
   | "ok"
   | "unconfigured"
   | "rate_limited"
+  | "monthly_quota"
+  | "not_subscribed"
   | "http_error"
   | "network_error"
   | "empty";
+
+/** Map RapidAPI HTTP failures to user-facing search reasons (429 body distinguishes monthly vs burst). */
+export function classifyAeroFailure(status: number, body: string): Exclude<AeroSearchReason, "ok"> {
+  const msg = body.toLowerCase();
+  if (status === 429) {
+    if (msg.includes("monthly")) return "monthly_quota";
+    if (msg.includes("per second") || msg.includes("per-second") || msg.includes("per minute")) {
+      return "rate_limited";
+    }
+    return "rate_limited";
+  }
+  if (status === 403) {
+    if (
+      msg.includes("not subscribed") ||
+      msg.includes("subscription") ||
+      msg.includes("not subscribed to this api") ||
+      msg.includes("exceed the maximum")
+    ) {
+      return "not_subscribed";
+    }
+    return "http_error";
+  }
+  if (status === 401 || (status === 403 && msg.includes("invalid") && msg.includes("key"))) {
+    return "not_subscribed";
+  }
+  return "http_error";
+}
 
 export type AeroSearchOutcome = {
   flights: AeroFlight[];
@@ -384,9 +413,9 @@ export async function lookupAeroDataBox(
       error: res.ok ? null : text.slice(0, 500),
     });
 
-    if (res.status === 429) return { flights: [], reason: "rate_limited" };
+    if (res.status === 429) return { flights: [], reason: classifyAeroFailure(res.status, text) };
     if (res.status === 204 || res.status === 404) return { flights: [], reason: "empty" };
-    if (!res.ok) return { flights: [], reason: "http_error" };
+    if (!res.ok) return { flights: [], reason: classifyAeroFailure(res.status, text) };
 
     const flights = rowsFromAeroBody(text).map(mapAero);
     return { flights, reason: flights.length ? "ok" : "empty" };
@@ -590,7 +619,9 @@ export async function lookupAeroByAircraft(opts: {
         error: range.res.ok ? null : range.text.slice(0, 500),
       });
 
-      if (range.res.status === 429) return { flights: [], reason: "rate_limited" };
+      if (range.res.status === 429) {
+        return { flights: [], reason: classifyAeroFailure(range.res.status, range.text) };
+      }
       if (range.res.status === 204) return { flights: [], reason: "empty" };
       if (range.res.ok) {
         const flights = rowsFromAeroBody(range.text).map(mapAero);
@@ -598,7 +629,7 @@ export async function lookupAeroByAircraft(opts: {
       }
       // BASIC / TIER 2: range is often 403. Fall back to each local day.
       if (range.res.status !== 403 && range.res.status !== 404) {
-        return { flights: [], reason: "http_error" };
+        return { flights: [], reason: classifyAeroFailure(range.res.status, range.text) };
       }
     }
 
@@ -623,18 +654,18 @@ export async function lookupAeroByAircraft(opts: {
       });
 
       if (day.res.status === 429) {
-        lastReason = "rate_limited";
+        lastReason = classifyAeroFailure(day.res.status, day.text);
         if (batches.some((b) => b.length)) break;
-        return { flights: [], reason: "rate_limited" };
+        return { flights: [], reason: lastReason };
       }
       if (day.res.status === 204 || day.res.status === 404) {
         lastReason = "empty";
         continue;
       }
       if (!day.res.ok) {
-        lastReason = "http_error";
+        lastReason = classifyAeroFailure(day.res.status, day.text);
         if (batches.some((b) => b.length)) break;
-        return { flights: [], reason: "http_error" };
+        return { flights: [], reason: lastReason };
       }
       const flights = rowsFromAeroBody(day.text).map(mapAero);
       if (flights.length) batches.push(flights);

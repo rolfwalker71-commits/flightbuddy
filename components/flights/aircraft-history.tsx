@@ -24,6 +24,10 @@ function reasonMessage(reason: AircraftHistoryPayload["reason"]): MessageKey {
       return "flight.noApi";
     case "rate_limited":
       return "flight.rateLimited";
+    case "monthly_quota":
+      return "flight.monthlyQuota";
+    case "not_subscribed":
+      return "flight.notSubscribed";
     case "http_error":
     case "network_error":
       return "flight.apiError";

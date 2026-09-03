@@ -5,6 +5,8 @@ export type AircraftHistoryReason =
   | "no_identity"
   | "unconfigured"
   | "rate_limited"
+  | "monthly_quota"
+  | "not_subscribed"
   | "http_error"
   | "network_error"
   | "empty";
