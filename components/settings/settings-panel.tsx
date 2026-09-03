@@ -17,7 +17,7 @@ import { TrackedObjectsList } from "@/components/map/tracked-objects-list";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
 
-type PrefKey = "webPush" | "gateChanges" | "delaysStatus" | "preflight2h" | "objectAlerts";
+type PrefKey = "webPush" | "gateChanges" | "delaysStatus" | "preflight2h" | "gateClose" | "arrivalSoon" | "objectAlerts";
 
 type ProviderUsage = {
   configured: boolean;
@@ -141,6 +141,20 @@ export function SettingsPanel({
           </Card>
           <Card>
             <PrefRow label={t("settings.preflight")} checked={local.preflight2h} onChange={(v) => updatePref("preflight2h", v)} />
+          </Card>
+          <Card>
+            <PrefRow
+              label={t("settings.gateClose")}
+              checked={local.gateClose !== false}
+              onChange={(v) => updatePref("gateClose", v)}
+            />
+          </Card>
+          <Card>
+            <PrefRow
+              label={t("settings.arrivalSoon")}
+              checked={local.arrivalSoon !== false}
+              onChange={(v) => updatePref("arrivalSoon", v)}
+            />
           </Card>
           <Card>
             <PrefRow

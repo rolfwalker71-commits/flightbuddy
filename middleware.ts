@@ -9,6 +9,7 @@ const publicPaths = [
   "/register",
   "/api/auth",
   "/api/health",
+  "/s",
   "/manifest.webmanifest",
   "/sw.js",
   "/offline.html",

@@ -4,7 +4,12 @@ import { hydrateTrackDaily, persistUserFlightTrackDaily, pickKnownModelData, pri
 import { lookupAeroDataBox } from "./aerodatabox";
 import { parseFlightQuery } from "./utils";
 import { nextPollAt, resolvePollPhase } from "./flight-status";
-import { cancelFlightPoll, cancelPreflightReminder, scheduleFlightPoll, schedulePreflightReminder } from "./queue";
+import {
+  cancelFlightPoll,
+  cancelFlightReminders,
+  scheduleFlightPoll,
+  scheduleUserFlightReminders,
+} from "./queue";
 import { env } from "./env";
 import { airportTimeZone } from "./airport-tz";
 
@@ -169,6 +174,7 @@ export async function saveUserFlight(opts: {
   userId: string;
   result: FlightSearchResult;
   seat?: string;
+  notes?: string;
   pushAlerts?: boolean;
   trackDaily?: boolean;
 }) {
@@ -270,6 +276,7 @@ export async function saveUserFlight(opts: {
 
   const userFlightData = pickKnownModelData("UserFlight", {
     seat: opts.seat,
+    notes: opts.notes,
     pushAlerts: opts.pushAlerts,
     trackDaily: opts.trackDaily,
   });
@@ -287,11 +294,17 @@ export async function saveUserFlight(opts: {
   }
 
   await scheduleFlightPoll(flight.id, flight.nextPollAt);
-  await schedulePreflightReminder({
+  await scheduleUserFlightReminders({
     userFlightId: userFlight.id,
     flightId: flight.id,
     userId: opts.userId,
-    runAt: new Date(dep.getTime() - env.preflightWindowHours * 60 * 60 * 1000),
+    scheduledDep: dep,
+    scheduledArr: flight.scheduledArr,
+    estimatedDep: flight.estimatedDep,
+    estimatedArr: flight.estimatedArr,
+    actualDep: flight.actualDep,
+    actualArr: flight.actualArr,
+    preflightWindowHours: env.preflightWindowHours,
   });
 
   return { flight, userFlight };
@@ -345,7 +358,7 @@ export async function untrackUserFlight(userId: string, flightId: string) {
   });
 
   if (!result) return null;
-  await cancelPreflightReminder(result.userFlightId);
+  await cancelFlightReminders(result.userFlightId);
   if (result.flightDeleted) await cancelFlightPoll(flightId);
   return result;
 }

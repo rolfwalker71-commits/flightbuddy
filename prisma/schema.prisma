@@ -51,6 +51,8 @@ model User {
   pushSubs    PushSubscription[]
   notifications Notification[]
   notifPref   NotificationPreference?
+  trips       Trip[]
+  shareLinks  ShareLink[]
 }
 
 model Airport {
@@ -157,10 +159,51 @@ model UserFlight {
   /// Follow the next official instance of this number + typical route on later origin-local days.
   trackDaily Boolean  @default(false)
   createdAt  DateTime @default(now())
+  tripLeg    TripLeg?
 
   @@unique([userId, flightId])
   @@index([userId])
   @@index([trackDaily])
+}
+
+model Trip {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  legs      TripLeg[]
+  shares    ShareLink[]
+
+  @@index([userId])
+}
+
+model TripLeg {
+  id           String     @id @default(cuid())
+  tripId       String
+  trip         Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userFlightId String     @unique
+  userFlight   UserFlight @relation(fields: [userFlightId], references: [id], onDelete: Cascade)
+  sortOrder    Int        @default(0)
+
+  @@index([tripId, sortOrder])
+}
+
+model ShareLink {
+  id        String    @id @default(cuid())
+  token     String    @unique @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Share a single tracked flight (Flight.id).
+  flightId  String?
+  tripId    String?
+  trip      Trip?     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@index([userId])
+  @@index([flightId])
 }
 
 model FlightPosition {
@@ -205,10 +248,26 @@ model TrackedAircraft {
   lastAirborneAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  events         TrackedAircraftEvent[]
 
   @@unique([userId, icao24])
   @@index([userId])
   @@index([icao24])
+}
+
+model TrackedAircraftEvent {
+  id                 String          @id @default(cuid())
+  trackedAircraftId  String
+  trackedAircraft    TrackedAircraft @relation(fields: [trackedAircraftId], references: [id], onDelete: Cascade)
+  phase              String
+  callsign           String?
+  altitudeFt         Float?
+  velocityKts        Float?
+  lat                Float?
+  lon                Float?
+  recordedAt         DateTime        @default(now())
+
+  @@index([trackedAircraftId, recordedAt])
 }
 
 model NotificationPreference {
@@ -219,6 +278,8 @@ model NotificationPreference {
   gateChanges  Boolean @default(true)
   delaysStatus Boolean @default(true)
   preflight2h  Boolean @default(true)
+  gateClose    Boolean @default(true)
+  arrivalSoon  Boolean @default(true)
   objectAlerts Boolean @default(true)
 }
 

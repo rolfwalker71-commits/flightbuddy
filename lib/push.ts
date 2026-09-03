@@ -52,6 +52,8 @@ export async function notifyUsers(opts: {
     if (opts.kind === "gate") return p.gateChanges;
     if (opts.kind === "status") return p.delaysStatus;
     if (opts.kind === "preflight") return p.preflight2h;
+    if (opts.kind === "gate_close") return p.gateClose !== false;
+    if (opts.kind === "arrival_soon") return p.arrivalSoon !== false;
     if (opts.kind === "object") return p.objectAlerts !== false;
     return true;
   });

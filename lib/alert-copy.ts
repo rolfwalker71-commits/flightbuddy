@@ -8,7 +8,7 @@ import { displayFlightNumber } from "./utils";
 export const PUSH_TITLE_MAX = 50;
 export const PUSH_BODY_MAX = 150;
 
-export type NotifyKind = "gate" | "status" | "preflight" | "generic" | "object";
+export type NotifyKind = "gate" | "status" | "preflight" | "gate_close" | "arrival_soon" | "generic" | "object";
 
 export type AlertAirport = {
   iata?: string | null;
@@ -107,6 +107,8 @@ export function alertEventLabel(
   delayMinutes?: number | null,
 ): string {
   if (kind === "preflight") return t(locale, "alerts.eventPreflight");
+  if (kind === "gate_close") return t(locale, "alerts.eventGateClose");
+  if (kind === "arrival_soon") return t(locale, "alerts.eventArrivalSoon");
   if (kind === "gate") return t(locale, "alerts.eventGate");
   if (kind === "object_airborne") return t(locale, "alerts.eventObjectAirborne");
   if (kind === "object_landed") return t(locale, "alerts.eventObjectLanded");
@@ -115,7 +117,7 @@ export function alertEventLabel(
 }
 
 export function alertRole(kind: string, status?: string | null): "dep" | "arr" {
-  if (kind === "landed") return "arr";
+  if (kind === "landed" || kind === "arrival_soon") return "arr";
   if (kind === "status" || kind === "generic") {
     if (status === FlightStatus.LANDED || status === "LANDED") return "arr";
   }
@@ -208,13 +210,17 @@ export function buildAlertCopy(input: AlertCopyInput): AlertCopy {
   const title =
     input.kind === "preflight"
       ? t(locale, "push.preflightTitle", { code })
-      : input.kind === "gate"
-        ? t(locale, "push.gateTitle", { code })
-        : t(locale, "push.statusTitle", { code, status: event });
+      : input.kind === "gate_close"
+        ? t(locale, "push.gateCloseTitle", { code })
+        : input.kind === "arrival_soon"
+          ? t(locale, "push.arrivalSoonTitle", { code })
+          : input.kind === "gate"
+            ? t(locale, "push.gateTitle", { code })
+            : t(locale, "push.statusTitle", { code, status: event });
 
   const leg = alertLeg(input.flight, persistKind, String(status), input.gate, input.terminal);
   const stand =
-    input.kind === "preflight" || input.kind === "gate"
+    input.kind === "preflight" || input.kind === "gate" || input.kind === "gate_close"
       ? formatStand(locale, leg.gate, leg.terminal)
       : null;
   const times = pushTimePart(locale, units, leg.times, leg.zone);
@@ -222,6 +228,10 @@ export function buildAlertCopy(input: AlertCopyInput): AlertCopy {
 
   if (!body && input.kind === "preflight") {
     body = t(locale, "push.preflightFallback");
+  } else if (!body && input.kind === "gate_close") {
+    body = t(locale, "push.gateCloseFallback");
+  } else if (!body && input.kind === "arrival_soon") {
+    body = t(locale, "push.arrivalSoonFallback");
   } else if (!body && persistKind === "delayed" && delayMinutes) {
     body = t(locale, "push.delayedBody", { n: delayMinutes });
   }
@@ -261,7 +271,11 @@ export function alertCardModel(
   units: Units,
 ): AlertCardModel {
   const eventKind =
-    kind === "preflight" || kind === "gate" || Boolean(STATUS_KIND[kind])
+    kind === "preflight" ||
+    kind === "gate" ||
+    kind === "gate_close" ||
+    kind === "arrival_soon" ||
+    Boolean(STATUS_KIND[kind])
       ? kind
       : persistAlertKind("status", flight.status);
   const event = alertEventLabel(locale, eventKind, String(flight.status), flight.delayMinutes);
@@ -318,8 +332,16 @@ export function buildObjectAlertCopy(opts: {
 export function eventBadgeVariant(
   kind: string,
 ): "live" | "success" | "warning" | "destructive" | "default" {
-  if (kind === "preflight" || kind === "departed" || kind === "en_route" || kind === "object_airborne") return "live";
-  if (kind === "landed" || kind === "boarding" || kind === "object_landed") return "success";
+  if (
+    kind === "preflight" ||
+    kind === "gate_close" ||
+    kind === "departed" ||
+    kind === "en_route" ||
+    kind === "object_airborne"
+  )
+    return "live";
+  if (kind === "landed" || kind === "boarding" || kind === "arrival_soon" || kind === "object_landed")
+    return "success";
   if (kind === "delayed") return "warning";
   if (kind === "cancelled" || kind === "diverted") return "destructive";
   return "default";

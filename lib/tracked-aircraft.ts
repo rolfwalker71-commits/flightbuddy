@@ -15,6 +15,26 @@ export type TrackedAircraftView = {
   operator: string | null;
   airlineIata: string | null;
   createdAt: Date;
+  starts?: number;
+  landings?: number;
+  lastEventAt?: Date | null;
+};
+
+export type TrackedAircraftEventView = {
+  id: string;
+  phase: "airborne" | "landed" | string;
+  callsign: string | null;
+  altitudeFt: number | null;
+  velocityKts: number | null;
+  lat: number | null;
+  lon: number | null;
+  recordedAt: Date;
+};
+
+export type TrackedAircraftHistory = {
+  aircraft: TrackedAircraftView;
+  events: TrackedAircraftEventView[];
+  stats: { starts: number; landings: number };
 };
 
 export type TrackedAircraftInput = {
@@ -35,6 +55,9 @@ export function toTrackedView(row: {
   operator: string | null;
   airlineIata: string | null;
   createdAt: Date;
+  starts?: number;
+  landings?: number;
+  lastEventAt?: Date | null;
 }): TrackedAircraftView {
   return {
     id: row.id,
@@ -43,6 +66,9 @@ export function toTrackedView(row: {
     operator: row.operator,
     airlineIata: row.airlineIata,
     createdAt: row.createdAt,
+    starts: row.starts,
+    landings: row.landings,
+    lastEventAt: row.lastEventAt,
   };
 }
 
@@ -50,8 +76,79 @@ export async function listTrackedAircraft(userId: string): Promise<TrackedAircra
   const rows = await prisma.trackedAircraft.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
+    include: {
+      events: { select: { phase: true, recordedAt: true }, orderBy: { recordedAt: "desc" } },
+    },
   });
-  return rows.map(toTrackedView);
+  return rows.map((row) =>
+    toTrackedView({
+      ...row,
+      starts: row.events.filter((e) => e.phase === "airborne").length,
+      landings: row.events.filter((e) => e.phase === "landed").length,
+      lastEventAt: row.events[0]?.recordedAt ?? null,
+    }),
+  );
+}
+
+export async function getTrackedAircraftHistory(
+  userId: string,
+  id: string,
+  take = 50,
+): Promise<TrackedAircraftHistory | null> {
+  const row = await prisma.trackedAircraft.findFirst({
+    where: { id, userId },
+    include: {
+      events: { orderBy: { recordedAt: "desc" }, take },
+    },
+  });
+  if (!row) return null;
+  const starts = await prisma.trackedAircraftEvent.count({
+    where: { trackedAircraftId: row.id, phase: "airborne" },
+  });
+  const landings = await prisma.trackedAircraftEvent.count({
+    where: { trackedAircraftId: row.id, phase: "landed" },
+  });
+  return {
+    aircraft: toTrackedView({
+      ...row,
+      starts,
+      landings,
+      lastEventAt: row.events[0]?.recordedAt ?? null,
+    }),
+    events: row.events.map((e) => ({
+      id: e.id,
+      phase: e.phase,
+      callsign: e.callsign,
+      altitudeFt: e.altitudeFt,
+      velocityKts: e.velocityKts,
+      lat: e.lat,
+      lon: e.lon,
+      recordedAt: e.recordedAt,
+    })),
+    stats: { starts, landings },
+  };
+}
+
+async function recordObjectEvent(opts: {
+  trackedAircraftId: string;
+  phase: "airborne" | "landed";
+  callsign: string;
+  altitudeFt?: number | null;
+  velocityKts?: number | null;
+  lat?: number | null;
+  lon?: number | null;
+}) {
+  await prisma.trackedAircraftEvent.create({
+    data: {
+      trackedAircraftId: opts.trackedAircraftId,
+      phase: opts.phase,
+      callsign: opts.callsign,
+      altitudeFt: opts.altitudeFt ?? null,
+      velocityKts: opts.velocityKts ?? null,
+      lat: opts.lat ?? null,
+      lon: opts.lon ?? null,
+    },
+  });
 }
 
 export async function saveTrackedAircraft(userId: string, input: TrackedAircraftInput) {
@@ -137,6 +234,15 @@ export async function pollTrackedAircraft() {
         },
       });
       if (wasGroundOrUnknown && !debounce) {
+        await recordObjectEvent({
+          trackedAircraftId: row.id,
+          phase: "airborne",
+          callsign,
+          altitudeFt: tel.altitudeFt,
+          velocityKts: tel.velocityKts,
+          lat: tel.lat,
+          lon: tel.lon,
+        });
         await notifyUsers({
           userIds: [row.userId],
           kind: "object",
@@ -169,6 +275,15 @@ export async function pollTrackedAircraft() {
       },
     });
     if (wasAirborne) {
+      await recordObjectEvent({
+        trackedAircraftId: row.id,
+        phase: "landed",
+        callsign,
+        altitudeFt: tel.altitudeFt,
+        velocityKts: tel.velocityKts,
+        lat: tel.lat,
+        lon: tel.lon,
+      });
       await notifyUsers({
         userIds: [row.userId],
         kind: "object",

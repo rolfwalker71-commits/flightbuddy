@@ -6,6 +6,9 @@ import { FlightMap } from "@/components/map/flight-map";
 import { StatusBadge } from "@/components/flights/status-badge";
 import { DeleteFlightButton } from "@/components/flights/delete-flight-button";
 import { TrackDailyToggle } from "@/components/flights/track-daily-toggle";
+import { FlightMetaEditor } from "@/components/flights/flight-meta-editor";
+import { ShareFlightButton } from "@/components/flights/share-flight-button";
+import { TripPanel } from "@/components/flights/trip-panel";
 import { RoutePlane } from "@/components/flights/route-plane";
 import { cn, displayFlightNumber } from "@/lib/utils";
 import {
@@ -32,11 +35,21 @@ import {
   metricLabel,
 } from "@/lib/i18n/format";
 import { useLiveFlights } from "@/lib/use-live-flights";
+import type { TripView } from "@/lib/trips";
 
-export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
+export function FlightDetailView({
+  row: initial,
+  trips = [],
+  allFlights = [],
+}: {
+  row: UserFlightView;
+  trips?: TripView[];
+  allFlights?: UserFlightView[];
+}) {
   const t = useT();
   const { locale, units } = usePrefs();
   const [row] = useLiveFlights([initial]);
+  const flights = useLiveFlights(allFlights.length ? allFlights : [initial]);
   const { flight } = row;
   const nowMs = useLiveClock(flightNeedsLiveClock(flight));
   const now = new Date(nowMs);
@@ -167,6 +180,22 @@ export function FlightDetailView({ row: initial }: { row: UserFlightView }) {
         </div>
         <p className="mt-3 text-xs text-muted-foreground">{adsbCaption(flight, locale)}</p>
       </Card>
+
+      <FlightMetaEditor
+        flightId={flight.id}
+        seat={row.seat}
+        notes={row.notes}
+        pushAlerts={row.pushAlerts}
+      />
+
+      <TripPanel
+        flightId={flight.id}
+        userFlightId={row.id}
+        flights={flights}
+        trips={trips}
+      />
+
+      <ShareFlightButton flightId={flight.id} />
 
       <DeleteFlightButton
         flightId={flight.id}

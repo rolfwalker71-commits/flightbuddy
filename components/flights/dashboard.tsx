@@ -18,6 +18,8 @@ import { isLiveStatus } from "@/lib/flight-status";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { greeting } from "@/lib/i18n/format";
 import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import type { TripView } from "@/lib/trips";
+import { connectionByFlightId, tripIdByFlightId } from "@/lib/trips";
 
 const tabs = [
   { id: "upcoming" as const, labelKey: "home.upcoming" as const },
@@ -31,12 +33,14 @@ export function Dashboard({
   unreadAlerts,
   stats,
   tracked = [],
+  trips = [],
 }: {
   userName?: string | null;
   flights: UserFlightView[];
   unreadAlerts: number;
   stats: { flights: number; hours: number; countries: number };
   tracked?: TrackedAircraftView[];
+  trips?: TripView[];
 }) {
   const { locale } = usePrefs();
   const t = useT();
@@ -47,6 +51,12 @@ export function Dashboard({
   const [tab, setTab] = useState<"upcoming" | "live" | "past">("upcoming");
   const visible = useMemo(() => filterFlights(flights, tab), [flights, tab]);
   const live = flights.filter((f) => isLiveStatus(f.flight.status));
+  const tripByFlight = useMemo(() => {
+    const ids = tripIdByFlightId(trips);
+    const connections = connectionByFlightId(trips);
+    const names = new Map(trips.map((tr) => [tr.id, tr.name]));
+    return { ids, connections, names };
+  }, [trips]);
 
   return (
     <div className="space-y-6">
@@ -123,7 +133,17 @@ export function Dashboard({
               </div>
             </Card>
           ) : (
-            visible.map((row) => <FlightCard key={row.id} row={row} />)
+            visible.map((row) => {
+              const tripId = tripByFlight.ids.get(row.flight.id);
+              return (
+                <FlightCard
+                  key={row.id}
+                  row={row}
+                  connection={tripByFlight.connections.get(row.flight.id)}
+                  tripName={tripId ? tripByFlight.names.get(tripId) : null}
+                />
+              );
+            })
           )}
         </div>
 

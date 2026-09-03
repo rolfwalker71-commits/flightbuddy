@@ -7,7 +7,8 @@ import { setTrackDaily } from "@/lib/recurrence";
 
 const schema = z.object({
   pushAlerts: z.boolean().optional(),
-  seat: z.string().nullish(),
+  seat: z.string().max(16).nullish(),
+  notes: z.string().max(2000).nullish(),
   trackDaily: z.boolean().optional(),
 });
 
@@ -27,17 +28,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
     trackDaily = result.trackDaily;
   }
-  const rest = { pushAlerts: parsed.data.pushAlerts, seat: parsed.data.seat };
-  if (rest.pushAlerts !== undefined || rest.seat !== undefined) {
+  const rest = {
+    pushAlerts: parsed.data.pushAlerts,
+    seat: parsed.data.seat,
+    notes: parsed.data.notes,
+  };
+  if (rest.pushAlerts !== undefined || rest.seat !== undefined || rest.notes !== undefined) {
     await prisma.userFlight.update({
       where: { id: row.id },
       data: {
         ...(rest.pushAlerts !== undefined ? { pushAlerts: rest.pushAlerts } : {}),
         ...(rest.seat !== undefined ? { seat: rest.seat } : {}),
+        ...(rest.notes !== undefined ? { notes: rest.notes } : {}),
       },
     });
   }
-  return NextResponse.json({ ok: true, trackDaily });
+  return NextResponse.json({
+    ok: true,
+    trackDaily,
+    seat: rest.seat !== undefined ? rest.seat : row.seat,
+    notes: rest.notes !== undefined ? rest.notes : row.notes,
+    pushAlerts: rest.pushAlerts !== undefined ? rest.pushAlerts : row.pushAlerts,
+  });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

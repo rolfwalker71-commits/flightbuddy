@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { PollPhase } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
-import { FLIGHT_POLL_QUEUE, REMINDER_QUEUE, scheduleFlightPoll } from "@/lib/queue";
+import { FLIGHT_POLL_QUEUE, REMINDER_QUEUE, scheduleFlightPoll, type ReminderKind } from "@/lib/queue";
 import { pollFlight } from "@/lib/polling";
 import { notifyUsers } from "@/lib/push";
 import { pollTrackedAircraft } from "@/lib/tracked-aircraft";
@@ -35,9 +35,19 @@ const pollWorker = new Worker(
 const reminderWorker = new Worker(
   REMINDER_QUEUE,
   async (job) => {
-    const { userId, flightId } = job.data as { userId: string; flightId: string };
+    const data = job.data as {
+      userId: string;
+      flightId: string;
+      kind?: ReminderKind;
+    };
+    const kind: ReminderKind =
+      data.kind ??
+      (job.name === "gate_close" || job.name === "arrival_soon" || job.name === "preflight"
+        ? (job.name as ReminderKind)
+        : "preflight");
+    const { userId, flightId } = data;
     const stillTracked = await prisma.userFlight.findFirst({
-      where: { userId, flightId },
+      where: { userId, flightId, pushAlerts: true },
       select: { id: true },
     });
     if (!stillTracked) return;
@@ -46,9 +56,24 @@ const reminderWorker = new Worker(
       include: { departureAirport: true, arrivalAirport: true },
     });
     if (!flight || flight.pollPhase === PollPhase.COMPLETE) return;
+
+    if (kind === "arrival_soon") {
+      const alreadyLanded =
+        flight.status === "LANDED" || flight.actualArr != null || flight.lastOnGround === true;
+      if (alreadyLanded) return;
+    }
+    if (kind === "gate_close" || kind === "preflight") {
+      const alreadyGone =
+        flight.status === "DEPARTED" ||
+        flight.status === "EN_ROUTE" ||
+        flight.status === "LANDED" ||
+        flight.actualDep != null;
+      if (alreadyGone) return;
+    }
+
     await notifyUsers({
       userIds: [userId],
-      kind: "preflight",
+      kind,
       flight,
     });
   },

@@ -25,13 +25,19 @@ import { AirportClock } from "./airport-clock";
 import { AirlineLogo } from "./airline-logo";
 import { AircraftHistoryControl } from "./aircraft-history";
 import { RecurringMark, TrackDailyToggle } from "./track-daily-toggle";
+import { ConnectionBadge } from "./trip-panel";
+import type { ConnectionInfo } from "@/lib/trips";
 
 export function FlightCard({
   row,
   variant = "default",
+  connection,
+  tripName,
 }: {
   row: UserFlightView;
   variant?: "default" | "compact";
+  connection?: ConnectionInfo | null;
+  tripName?: string | null;
 }) {
   const { locale, units } = usePrefs();
   const t = useT();
@@ -81,6 +87,8 @@ export function FlightCard({
             {originDate && <span className="text-xs text-muted-foreground">{originDate}</span>}
             <RecurringMark active={row.trackDaily} />
           </p>
+          {tripName && <p className="text-xs text-primary">{tripName}</p>}
+          {connection && <ConnectionBadge info={connection} />}
           {aircraftLine && !flight.registration && !flight.icao24 && (
             <p className="text-xs text-muted-foreground">{aircraftLine}</p>
           )}

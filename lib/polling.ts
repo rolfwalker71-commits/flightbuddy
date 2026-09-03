@@ -7,7 +7,8 @@ import { fetchFr24LivePosition } from "./fr24";
 import { LIVE_FIX_STALE_MS } from "./flight-interpolate";
 import { nextPollAt, resolvePollPhase, type PollScheduleInput } from "./flight-status";
 import { getUserFlight } from "./flights";
-import { scheduleFlightPoll } from "./queue";
+import { scheduleFlightPoll, scheduleUserFlightReminders } from "./queue";
+import { env } from "./env";
 
 type LiveFix = {
   lat: number;
@@ -345,6 +346,28 @@ export async function pollFlight(flightId: string) {
       status: nextStatus,
       delayMinutes: nextDelay,
     });
+  }
+
+  const timesChanged =
+    estimatedDep?.getTime() !== flight.estimatedDep?.getTime() ||
+    estimatedArr?.getTime() !== flight.estimatedArr?.getTime() ||
+    actualDep?.getTime() !== flight.actualDep?.getTime() ||
+    actualArr?.getTime() !== flight.actualArr?.getTime();
+  if (timesChanged && finalPhase !== PollPhase.COMPLETE) {
+    for (const uf of flight.userFlights) {
+      await scheduleUserFlightReminders({
+        userFlightId: uf.id,
+        flightId: flight.id,
+        userId: uf.userId,
+        scheduledDep: flight.scheduledDep,
+        scheduledArr: flight.scheduledArr,
+        estimatedDep,
+        estimatedArr,
+        actualDep,
+        actualArr,
+        preflightWindowHours: env.preflightWindowHours,
+      });
+    }
   }
 
   if (finalPhase !== PollPhase.COMPLETE && nextAt) {
