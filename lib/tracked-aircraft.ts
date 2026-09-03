@@ -1,48 +1,24 @@
 import { prisma } from "./db";
-import { displayCallsign } from "./callsign";
 import { objectLabel, resolveOperator } from "./operator";
 import { fetchOpenSkyByIcao24s, openSkyToTelemetry } from "./opensky";
 import { notifyUsers } from "./push";
 import { buildObjectAlertCopy } from "./alert-copy";
+import type {
+  TrackedAircraftHistory,
+  TrackedAircraftInput,
+  TrackedAircraftView,
+} from "./tracked-aircraft-types";
+
+export type {
+  TrackedAircraftEventView,
+  TrackedAircraftHistory,
+  TrackedAircraftInput,
+  TrackedAircraftView,
+} from "./tracked-aircraft-types";
+export { displayTrackedCallsign } from "./tracked-aircraft-types";
 
 const ABSENT_RESET_MS = 15 * 60 * 1000;
 const AIRBORNE_DEBOUNCE_MS = 10 * 60 * 1000;
-
-export type TrackedAircraftView = {
-  id: string;
-  icao24: string;
-  callsign: string;
-  operator: string | null;
-  airlineIata: string | null;
-  createdAt: Date;
-  starts?: number;
-  landings?: number;
-  lastEventAt?: Date | null;
-};
-
-export type TrackedAircraftEventView = {
-  id: string;
-  phase: "airborne" | "landed" | string;
-  callsign: string | null;
-  altitudeFt: number | null;
-  velocityKts: number | null;
-  lat: number | null;
-  lon: number | null;
-  recordedAt: Date;
-};
-
-export type TrackedAircraftHistory = {
-  aircraft: TrackedAircraftView;
-  events: TrackedAircraftEventView[];
-  stats: { starts: number; landings: number };
-};
-
-export type TrackedAircraftInput = {
-  icao24: string;
-  callsign?: string | null;
-  operator?: string | null;
-  airlineIata?: string | null;
-};
 
 export function normalizeIcao24(value: string) {
   return value.replace(/[^a-f0-9]/gi, "").toLowerCase();
@@ -304,8 +280,4 @@ export async function pollTrackedAircraft() {
   }
 
   return { polled: icaos.length, notified };
-}
-
-export function displayTrackedCallsign(row: Pick<TrackedAircraftView, "callsign" | "icao24">) {
-  return displayCallsign(row.callsign, row.icao24.slice(0, 6).toUpperCase());
 }

@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePrefs, useT } from "@/components/i18n/prefs-provider";
 import { formatAltitude, formatRelative, formatSpeed } from "@/lib/i18n/format";
-import type { TrackedAircraftHistory, TrackedAircraftView } from "@/lib/tracked-aircraft";
-import { displayTrackedCallsign } from "@/lib/tracked-aircraft";
+import type { TrackedAircraftHistory, TrackedAircraftView } from "@/lib/tracked-aircraft-types";
+import { displayTrackedCallsign } from "@/lib/tracked-aircraft-types";
 
 export function ObjectHistoryButton({ item }: { item: TrackedAircraftView }) {
   const t = useT();

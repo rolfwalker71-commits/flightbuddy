@@ -7,7 +7,7 @@ import { tileClassName } from "@/components/ui/card";
 import { useT } from "@/components/i18n/prefs-provider";
 import { displayCallsign } from "@/lib/callsign";
 import { cn } from "@/lib/utils";
-import type { TrackedAircraftView } from "@/lib/tracked-aircraft";
+import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 
 export function TrackedObjectsList({
   items,

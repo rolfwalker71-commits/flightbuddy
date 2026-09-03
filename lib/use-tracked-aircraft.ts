@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { TrackedAircraftView } from "./tracked-aircraft";
+import type { TrackedAircraftView } from "./tracked-aircraft-types";
 
 export function useTrackedAircraft(initial: TrackedAircraftView[] = []) {
   const [items, setItems] = useState(initial);
