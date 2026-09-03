@@ -6,7 +6,7 @@ if [ "$1" = "worker" ]; then
 fi
 
 if [ -n "$DATABASE_URL" ]; then
-  node node_modules/prisma/build/index.js migrate deploy
+  node /prisma-cli/node_modules/prisma/build/index.js migrate deploy --schema=/app/prisma/schema.prisma
   node dist/seed.cjs || true
 fi
 
