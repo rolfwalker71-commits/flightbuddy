@@ -1,7 +1,7 @@
 import { FlightStatus } from "@prisma/client";
 import { lookupAeroDataBox, type AeroFlight } from "./aerodatabox";
 import { airportTimeZone, originCalendarDay, shiftCalendarDay } from "./airport-tz";
-import { clientModelFieldNames, persistUserFlightTrackDaily, prisma } from "./db";
+import { clientModelFieldNames, persistUserFlightInLogbook, persistUserFlightTrackDaily, prisma } from "./db";
 import { saveUserFlight, type FlightSearchResult } from "./flights";
 
 /**
@@ -204,6 +204,7 @@ async function linkOfficialDay(series: Series, targetDay: string) {
       seat: user.seat ?? undefined,
       pushAlerts: user.pushAlerts,
       trackDaily: true,
+      inLogbook: false,
     });
     user.knownDays.add(targetDay);
   }
@@ -259,9 +260,13 @@ export async function setTrackDaily(userId: string, flightId: string, trackDaily
 
   const ids = siblings.length ? siblings.map((item) => item.id) : [row.id];
   await persistUserFlightTrackDaily(ids, trackDaily);
+  // Daily series inflate the logbook; turn tracking on ⇒ leave logbook off by default.
+  if (trackDaily) {
+    await persistUserFlightInLogbook(ids, false);
+  }
 
   if (trackDaily && recurrenceSupported()) {
     await advanceRecurringFlights({ userId, flightNumber, fromIata, toIata });
   }
-  return { ok: true as const, trackDaily };
+  return { ok: true as const, trackDaily, inLogbook: trackDaily ? false : undefined };
 }

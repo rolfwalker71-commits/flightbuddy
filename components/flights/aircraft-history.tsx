@@ -267,7 +267,7 @@ export function AircraftHistoryControl({
         "relative z-10 pointer-events-auto rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         variant === "detail"
           ? "mt-1 min-h-11 w-full py-1 hover:bg-muted"
-          : "min-h-11 text-xs text-muted-foreground hover:text-foreground",
+          : "mt-0.5 block w-full whitespace-normal py-0.5 text-left text-xs leading-snug text-muted-foreground hover:text-foreground",
       )}
       aria-haspopup="dialog"
       aria-expanded={open}

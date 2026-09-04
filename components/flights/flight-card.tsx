@@ -50,6 +50,7 @@ export function FlightCard({
   const from = flight.departureAirport?.iata ?? "—";
   const to = flight.arrivalAirport?.iata ?? "—";
   const label = displayFlightNumber(flight.flightNumber);
+  const airlineName = flight.airline?.name ?? flight.airlineIata;
   const airlineIata = flight.airline?.iata ?? flight.airlineIata;
   const depStand = formatStand(locale, flight.gate, flight.terminal);
   const arrStand = formatStand(locale, flight.arrivalGate, flight.arrivalTerminal);
@@ -64,33 +65,33 @@ export function FlightCard({
   const minutesToDep = depInstant ? (depInstant.getTime() - nowMs) / 60000 : null;
   const departed = flightHasDeparted(flight, now);
   const past = isPastStatus(flight.status);
+  const remainingLabel = formatDuration(m.remainingMin, locale);
+  const liveMeta = altitude ? `${altitude.primary} · ${altitude.secondary}` : t("flight.live");
   const routeCaption = live
-    ? `${formatDuration(m.remainingMin, locale)} · ${
-        altitude ? `${altitude.primary} · ${altitude.secondary}` : t("flight.live")
-      }`
+    ? `${remainingLabel} · ${liveMeta}`
     : (depStand ?? formatDuration(m.durationMin, locale));
 
+  const progressPct = Math.round(m.progress * 100);
+
   return (
-    <Card className="relative overflow-hidden bg-card p-4 transition-colors hover:bg-muted">
+    <Card className="relative overflow-hidden bg-card p-3 transition-colors hover:bg-muted md:p-4">
       <Link
         href={`/flights/${flight.id}`}
         className="absolute inset-0 z-0 rounded-[var(--tile-radius)]"
         aria-label={label}
       />
-      <div className="relative z-10 flex items-center justify-between gap-2 md:gap-3">
-        <div className="pointer-events-none min-w-0 text-sm text-muted-foreground">
-          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="break-words text-lg font-semibold text-foreground">{label}</span>
-            <span className="break-words text-base font-semibold text-foreground">
-              {flight.airline?.name ?? flight.airlineIata}
-            </span>
-            {originDate && <span className="text-xs text-muted-foreground">{originDate}</span>}
+      <div className="relative z-10 flex items-start justify-between gap-2">
+        <div className="pointer-events-none min-w-0 flex-1 text-sm text-muted-foreground">
+          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0 text-base font-semibold leading-snug text-foreground md:text-lg">
+            <span>{label}</span>
+            {airlineName && <span>{airlineName}</span>}
+            {originDate && <span className="text-xs font-normal text-muted-foreground">{originDate}</span>}
             <RecurringMark active={row.trackDaily} />
           </p>
-          {tripName && <p className="text-xs text-primary">{tripName}</p>}
+          {tripName && <p className="mt-0.5 text-xs leading-snug text-primary">{tripName}</p>}
           {connection && <ConnectionBadge info={connection} />}
           {aircraftLine && !flight.registration && !flight.icao24 && (
-            <p className="text-xs text-muted-foreground">{aircraftLine}</p>
+            <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{aircraftLine}</p>
           )}
           <AircraftHistoryControl
             flightId={flight.id}
@@ -100,13 +101,9 @@ export function FlightCard({
             variant="compact"
           />
         </div>
-        <div className="flex shrink-0 items-center gap-1 md:gap-2">
-          <div className="pointer-events-none max-w-[6.5rem] md:max-w-none">
-            <StatusBadge
-              status={flight.status}
-              delayMinutes={flight.delayMinutes}
-              className="h-auto max-w-full whitespace-normal text-center line-clamp-2"
-            />
+        <div className="flex shrink-0 items-center gap-0.5 md:gap-2">
+          <div className="pointer-events-none">
+            <StatusBadge status={flight.status} delayMinutes={flight.delayMinutes} />
           </div>
           <TrackDailyToggle
             key={flight.id}
@@ -122,61 +119,92 @@ export function FlightCard({
         </div>
       </div>
 
-      <div className="pointer-events-none mt-4 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)] items-start gap-x-3">
-        <p className="break-words text-2xl font-bold tracking-tight md:text-3xl">{from}</p>
-        <div className="flex min-h-[2rem] items-center px-1 md:min-h-[2.25rem] md:px-2">
-          <div className="relative h-px w-full bg-border">
-            <div
-              className="absolute inset-y-0 left-0 bg-primary"
-              style={{ width: `${Math.round(m.progress * 100)}%` }}
-            />
-            <RoutePlane progress={m.progress} />
+      <div className="pointer-events-none mt-3 md:mt-4">
+        {/* Mobile: compact endpoints + full-width track. */}
+        <div className="md:hidden">
+          <div className="grid grid-cols-[auto_minmax(3.5rem,1fr)_auto] items-center gap-x-2">
+            <p className="text-2xl font-bold tracking-tight">{from}</p>
+            <div className="flex min-h-5 min-w-0 items-center px-0.5">
+              <div className="relative h-0.5 w-full rounded-full bg-muted">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-primary"
+                  style={{ width: `${progressPct}%` }}
+                />
+                <RoutePlane progress={m.progress} className="size-4 [&_svg]:size-3.5" />
+              </div>
+            </div>
+            <p className="text-right text-2xl font-bold tracking-tight">{to}</p>
+          </div>
+          <div className="mt-0.5 grid grid-cols-[1fr_auto_1fr] items-baseline gap-x-2 text-xs text-muted-foreground">
+            <p className="min-w-0 truncate">{flight.departureAirport?.city || "\u00a0"}</p>
+            <p className="max-w-[11rem] shrink-0 text-center leading-snug">{routeCaption}</p>
+            <p className="min-w-0 truncate text-right">{flight.arrivalAirport?.city || "\u00a0"}</p>
           </div>
         </div>
-        <p className="break-words text-right text-2xl font-bold tracking-tight md:text-3xl">{to}</p>
 
-        <p className="text-sm leading-snug text-muted-foreground">
-          {flight.departureAirport?.city || "\u00a0"}
-        </p>
-        <p className="px-1 text-center text-xs leading-snug break-words text-muted-foreground md:px-2">
-          {routeCaption}
-        </p>
-        <p className="text-right text-sm leading-snug text-muted-foreground">
-          {flight.arrivalAirport?.city || "\u00a0"}
-        </p>
+        {/* Desktop: progress sits between IATA codes. */}
+        <div className="hidden md:block">
+          <div className="grid grid-cols-[auto_minmax(5rem,1fr)_auto] items-center gap-x-3">
+            <p className="text-3xl font-bold tracking-tight">{from}</p>
+            <div className="flex min-h-[2.25rem] min-w-0 items-center px-2">
+              <div className="relative h-px w-full bg-border">
+                <div
+                  className="absolute inset-y-0 left-0 bg-primary"
+                  style={{ width: `${progressPct}%` }}
+                />
+                <RoutePlane progress={m.progress} />
+              </div>
+            </div>
+            <p className="text-right text-3xl font-bold tracking-tight">{to}</p>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-3">
+            <p className="min-w-0 truncate text-sm text-muted-foreground">
+              {flight.departureAirport?.city || "\u00a0"}
+            </p>
+            <p className="min-w-0 truncate text-right text-sm text-muted-foreground">
+              {flight.arrivalAirport?.city || "\u00a0"}
+            </p>
+          </div>
+          <p className="mt-1 truncate text-center text-xs text-muted-foreground">{routeCaption}</p>
+        </div>
 
-        <AirportClock
-          role="dep"
-          scheduled={flight.scheduledDep}
-          estimated={flight.estimatedDep}
-          actual={flight.actualDep}
-          iata={flight.departureAirport?.iata}
-          storedTimeZone={flight.departureAirport?.timezone}
-          status={flight.status}
-        />
-        <div />
-        <AirportClock
-          role="arr"
-          align="right"
-          scheduled={flight.scheduledArr}
-          estimated={flight.estimatedArr}
-          actual={flight.actualArr}
-          iata={flight.arrivalAirport?.iata}
-          storedTimeZone={flight.arrivalAirport?.timezone}
-          status={flight.status}
-        />
+        <div className="mt-2 grid grid-cols-2 gap-x-3 md:mt-4 md:gap-x-4">
+          <AirportClock
+            role="dep"
+            showViewer={false}
+            scheduled={flight.scheduledDep}
+            estimated={flight.estimatedDep}
+            actual={flight.actualDep}
+            iata={flight.departureAirport?.iata}
+            storedTimeZone={flight.departureAirport?.timezone}
+            status={flight.status}
+          />
+          <AirportClock
+            role="arr"
+            align="right"
+            showViewer={false}
+            scheduled={flight.scheduledArr}
+            estimated={flight.estimatedArr}
+            actual={flight.actualArr}
+            iata={flight.arrivalAirport?.iata}
+            storedTimeZone={flight.arrivalAirport?.timezone}
+            status={flight.status}
+          />
+        </div>
 
         {(depStand || arrStand) && (
-          <>
-            <p className="text-xs leading-snug text-muted-foreground">{depStand || "\u00a0"}</p>
-            <div />
-            <p className="text-right text-xs leading-snug text-muted-foreground">{arrStand || "\u00a0"}</p>
-          </>
+          <div className="mt-0.5 hidden grid-cols-2 gap-x-4 md:grid">
+            <p className="min-w-0 truncate text-xs text-muted-foreground">{depStand || "\u00a0"}</p>
+            <p className="min-w-0 truncate text-right text-xs text-muted-foreground">
+              {arrStand || "\u00a0"}
+            </p>
+          </div>
         )}
       </div>
 
+      {/* Mini-map only on md+ — on phones the detail screen has the full map. */}
       {variant === "default" && live && m.origin && m.dest && (
-        <div className="pointer-events-none mt-4 h-36 overflow-hidden rounded-[calc(var(--tile-radius)*0.65)]">
+        <div className="pointer-events-none mt-3 hidden h-36 overflow-hidden rounded-[calc(var(--tile-radius)*0.65)] md:mt-4 md:block">
           <FlightMap
             interactive={false}
             className="h-36 w-full"
@@ -186,7 +214,7 @@ export function FlightCard({
       )}
 
       {!live && (
-        <div className="pointer-events-none mt-4 grid grid-cols-3 gap-2 text-center text-sm">
+        <div className="pointer-events-none mt-3 grid grid-cols-3 gap-2 text-center text-sm md:mt-4">
           <div className="min-w-0">
             {departed ? (
               <Badge variant="live" className="mx-auto max-w-full whitespace-normal break-words text-center">

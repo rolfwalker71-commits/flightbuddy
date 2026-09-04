@@ -8,7 +8,7 @@ import { t } from "@/lib/i18n/messages";
 
 export default async function LoginPage() {
   const session = await auth();
-  if (session?.user) redirect("/");
+  if (session?.user?.id) redirect("/");
   const { locale } = await getRequestPrefs();
 
   return (

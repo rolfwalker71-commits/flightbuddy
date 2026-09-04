@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { Bookmark, Loader2, Plus, Repeat, Search } from "lucide-react";
+import { Bookmark, BookOpen, Loader2, Plus, Repeat, Search } from "lucide-react";
 import { useChrome } from "@/components/chrome/chrome-provider";
 import { fabClass } from "@/lib/platform";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -79,6 +79,7 @@ export function AddFlightDialog({ triggerLabel, fab }: { triggerLabel?: string; 
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [trackDaily, setTrackDaily] = useState(false);
+  const [inLogbook, setInLogbook] = useState(true);
 
   function primeDraft(nextQuery: string, local?: FlightSearchResult) {
     const parsed = parseFlightQuery(nextQuery);
@@ -123,7 +124,7 @@ export function AddFlightDialog({ triggerLabel, fab }: { triggerLabel?: string; 
       const res = await fetch("/api/flights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...result, trackDaily }),
+        body: JSON.stringify({ ...result, trackDaily, inLogbook }),
       });
       const json = await res.json();
       if (res.status === 401 || json.code === "SESSION_EXPIRED") {
@@ -217,7 +218,24 @@ export function AddFlightDialog({ triggerLabel, fab }: { triggerLabel?: string; 
               </Label>
               <p className="mt-1 text-xs text-muted-foreground">{t("flight.trackDailyHint")}</p>
             </div>
-            <Switch id="flight-daily" checked={trackDaily} onCheckedChange={setTrackDaily} />
+            <Switch
+              id="flight-daily"
+              checked={trackDaily}
+              onCheckedChange={(value) => {
+                setTrackDaily(value);
+                setInLogbook(!value);
+              }}
+            />
+          </div>
+          <div className={cn(tileClassName, "flex items-start justify-between gap-3 p-3")}>
+            <div className="min-w-0">
+              <Label htmlFor="flight-logbook" className="flex items-center gap-2 text-foreground">
+                <BookOpen className="size-4" />
+                {t("flight.inLogbook")}
+              </Label>
+              <p className="mt-1 text-xs text-muted-foreground">{t("flight.inLogbookHint")}</p>
+            </div>
+            <Switch id="flight-logbook" checked={inLogbook} onCheckedChange={setInLogbook} />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="animate-spin" /> : <Search />}

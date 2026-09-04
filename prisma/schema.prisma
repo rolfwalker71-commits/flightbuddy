@@ -159,12 +159,15 @@ model UserFlight {
   pushAlerts Boolean  @default(true)
   /// Follow the next official instance of this number + typical route on later origin-local days.
   trackDaily Boolean  @default(false)
+  /// Count this flight in logbook / home stats. Daily-tracked flights default off.
+  inLogbook  Boolean  @default(true)
   createdAt  DateTime @default(now())
   tripLeg    TripLeg?
 
   @@unique([userId, flightId])
   @@index([userId])
   @@index([trackDaily])
+  @@index([userId, inLogbook])
 }
 
 model Trip {

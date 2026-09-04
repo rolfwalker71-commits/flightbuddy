@@ -2,24 +2,42 @@ import { FlightStatus } from "@prisma/client";
 import { prisma } from "./db";
 import { haversineMiles } from "./geo";
 
+/**
+ * Logbook / home stats. Filter via raw SQL so a stale Prisma Client
+ * (missing `inLogbook` in its DMMF) cannot reject the query.
+ */
 export async function getLogbookStats(userId: string, year?: number) {
-  const where = {
-    userId,
-    flight: {
-      status: { in: [FlightStatus.LANDED, FlightStatus.EN_ROUTE, FlightStatus.DEPARTED] },
-      ...(year
-        ? {
-            scheduledDep: {
-              gte: new Date(`${year}-01-01T00:00:00.000Z`),
-              lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
-            },
-          }
-        : {}),
-    },
-  };
+  const logbookRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "UserFlight"
+    WHERE "userId" = ${userId} AND "inLogbook" = true
+  `;
+  const ids = logbookRows.map((row) => row.id);
+  if (!ids.length) {
+    return {
+      flights: 0,
+      hours: 0,
+      miles: 0,
+      countries: 0,
+      topAirports: [] as Array<{ code: string; city: string | null; count: number }>,
+      topAirlines: [] as Array<{ name: string; count: number }>,
+    };
+  }
 
   const rows = await prisma.userFlight.findMany({
-    where,
+    where: {
+      id: { in: ids },
+      flight: {
+        status: { in: [FlightStatus.LANDED, FlightStatus.EN_ROUTE, FlightStatus.DEPARTED] },
+        ...(year
+          ? {
+              scheduledDep: {
+                gte: new Date(`${year}-01-01T00:00:00.000Z`),
+                lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
+              },
+            }
+          : {}),
+      },
+    },
     include: {
       flight: {
         include: { departureAirport: true, arrivalAirport: true, airline: true },

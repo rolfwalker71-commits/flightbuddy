@@ -95,6 +95,7 @@ export function useLiveFlights(initial: UserFlightView[]) {
             return {
               ...updated,
               trackDaily: typeof updated.trackDaily === "boolean" ? updated.trackDaily : f.trackDaily,
+              inLogbook: typeof updated.inLogbook === "boolean" ? updated.inLogbook : f.inLogbook,
             };
           }),
         );

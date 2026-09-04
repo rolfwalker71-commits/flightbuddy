@@ -1,6 +1,6 @@
 import { parseISO } from "date-fns";
 import { FlightStatus, PollPhase } from "@prisma/client";
-import { hydrateTrackDaily, persistUserFlightTrackDaily, pickKnownModelData, prisma } from "./db";
+import { hydrateTrackDaily, persistUserFlightInLogbook, persistUserFlightTrackDaily, pickKnownModelData, prisma } from "./db";
 import { lookupAeroDataBox } from "./aerodatabox";
 import { parseFlightQuery } from "./utils";
 import { nextPollAt, resolvePollPhase } from "./flight-status";
@@ -177,6 +177,7 @@ export async function saveUserFlight(opts: {
   notes?: string;
   pushAlerts?: boolean;
   trackDaily?: boolean;
+  inLogbook?: boolean;
 }) {
   if (!opts.result.scheduledDep || !opts.result.flightNumber.trim()) {
     throw new Error("Flight number and departure time are required");
@@ -274,11 +275,14 @@ export async function saveUserFlight(opts: {
     },
   });
 
+  const inLogbook =
+    opts.inLogbook != null ? opts.inLogbook : opts.trackDaily === true ? false : undefined;
   const userFlightData = pickKnownModelData("UserFlight", {
     seat: opts.seat,
     notes: opts.notes,
     pushAlerts: opts.pushAlerts,
-    trackDaily: opts.trackDaily,
+    ...(opts.trackDaily != null ? { trackDaily: opts.trackDaily } : {}),
+    ...(inLogbook != null ? { inLogbook } : {}),
   });
   const userFlight = await prisma.userFlight.upsert({
     where: { userId_flightId: { userId: opts.userId, flightId: flight.id } },
@@ -291,6 +295,9 @@ export async function saveUserFlight(opts: {
   });
   if (opts.trackDaily != null) {
     await persistUserFlightTrackDaily([userFlight.id], opts.trackDaily);
+  }
+  if (inLogbook != null) {
+    await persistUserFlightInLogbook([userFlight.id], inLogbook);
   }
 
   await scheduleFlightPoll(flight.id, flight.nextPollAt);

@@ -108,19 +108,38 @@ export async function persistUserFlightTrackDaily(ids: string[], trackDaily: boo
   }
 }
 
-export async function hydrateTrackDaily<T extends { id: string; trackDaily?: boolean }>(rows: T[]): Promise<T[]> {
-  const missing = rows.filter((row) => typeof row.trackDaily !== "boolean");
-  if (!missing.length) return rows;
-  const flags = new Map<string, boolean>();
-  for (const row of missing) {
-    const found = await prisma.$queryRaw<Array<{ trackDaily: boolean }>>`
-      SELECT "trackDaily" FROM "UserFlight" WHERE "id" = ${row.id}
-    `;
-    if (found[0]) flags.set(row.id, found[0].trackDaily);
+export async function persistUserFlightInLogbook(ids: string[], inLogbook: boolean): Promise<void> {
+  if (!ids.length) return;
+  for (const id of ids) {
+    await safeUserFlightUpdate(id, { inLogbook });
+    await prisma.$executeRaw`UPDATE "UserFlight" SET "inLogbook" = ${inLogbook} WHERE "id" = ${id}`;
   }
-  return rows.map((row) =>
-    typeof row.trackDaily === "boolean" ? row : { ...row, trackDaily: flags.get(row.id) ?? false },
-  );
+}
+
+export async function hydrateTrackDaily<T extends { id: string; trackDaily?: boolean; inLogbook?: boolean }>(
+  rows: T[],
+): Promise<T[]> {
+  const missingDaily = rows.filter((row) => typeof row.trackDaily !== "boolean");
+  const missingLog = rows.filter((row) => typeof row.inLogbook !== "boolean");
+  if (!missingDaily.length && !missingLog.length) return rows;
+
+  const daily = new Map<string, boolean>();
+  const logbook = new Map<string, boolean>();
+  const ids = [...new Set([...missingDaily, ...missingLog].map((row) => row.id))];
+  for (const id of ids) {
+    const found = await prisma.$queryRaw<Array<{ trackDaily: boolean; inLogbook: boolean }>>`
+      SELECT "trackDaily", "inLogbook" FROM "UserFlight" WHERE "id" = ${id}
+    `;
+    if (found[0]) {
+      daily.set(id, found[0].trackDaily);
+      logbook.set(id, found[0].inLogbook);
+    }
+  }
+  return rows.map((row) => ({
+    ...row,
+    trackDaily: typeof row.trackDaily === "boolean" ? row.trackDaily : (daily.get(row.id) ?? false),
+    inLogbook: typeof row.inLogbook === "boolean" ? row.inLogbook : (logbook.get(row.id) ?? true),
+  }));
 }
 
 /** Write only fields this PrismaClient accepts so a stale singleton cannot crash the page. */

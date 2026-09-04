@@ -24,7 +24,8 @@ export default auth((req) => {
   ) {
     return NextResponse.next();
   }
-  if (!req.auth) {
+  // Empty id = stale JWT after DB wipe; treat as logged out (avoids login↔/ redirect loop).
+  if (!req.auth?.user?.id) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("callbackUrl", pathname);

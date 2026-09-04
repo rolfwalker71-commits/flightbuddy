@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Compass, Gauge, Mountain, Route } from "lucide-react";
 import { FlightMap } from "@/components/map/flight-map";
 import { StatusBadge } from "@/components/flights/status-badge";
 import { DeleteFlightButton } from "@/components/flights/delete-flight-button";
-import { TrackDailyToggle } from "@/components/flights/track-daily-toggle";
+import { InLogbookToggle, TrackDailyToggle } from "@/components/flights/track-daily-toggle";
 import { FlightMetaEditor } from "@/components/flights/flight-meta-editor";
 import { ShareFlightButton } from "@/components/flights/share-flight-button";
 import { TripPanel } from "@/components/flights/trip-panel";
@@ -53,6 +54,8 @@ export function FlightDetailView({
   const [row] = useLiveFlights([initial]);
   const flights = useLiveFlights(allFlights.length ? allFlights : [initial]);
   const { flight } = row;
+  const [logbookKey, setLogbookKey] = useState(0);
+  const [logbookOn, setLogbookOn] = useState(initial.inLogbook !== false);
   const nowMs = useLiveClock(flightNeedsLiveClock(flight));
   const now = new Date(nowMs);
   const m = flightMetrics(flight, now);
@@ -189,8 +192,24 @@ export function FlightDetailView({
           </div>
           <p className="text-sm text-muted-foreground">{t("flight.seat", { seat: row.seat ?? "—" })}</p>
         </div>
-        <div className={cn(tileClassName, "mt-4 p-3")}>
-          <TrackDailyToggle flightId={flight.id} initial={Boolean(row.trackDaily)} key={flight.id} />
+        <div className={cn(tileClassName, "mt-4 space-y-3 p-3")}>
+          <TrackDailyToggle
+            flightId={flight.id}
+            initial={Boolean(row.trackDaily)}
+            key={`daily-${flight.id}`}
+            onTrackDailyChange={(_daily, nextLogbook) => {
+              if (typeof nextLogbook === "boolean") {
+                // Remount logbook toggle with server value after daily tracking flips it.
+                setLogbookKey((n) => n + 1);
+                setLogbookOn(nextLogbook);
+              }
+            }}
+          />
+          <InLogbookToggle
+            key={`log-${flight.id}-${logbookKey}`}
+            flightId={flight.id}
+            initial={logbookOn}
+          />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">{adsbCaption(flight, locale)}</p>
       </Card>

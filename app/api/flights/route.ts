@@ -47,6 +47,7 @@ const schema = z.object({
   timesEstimated: z.boolean().optional(),
   seat: z.string().optional(),
   trackDaily: z.boolean().optional(),
+  inLogbook: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -76,6 +77,7 @@ export async function POST(req: Request) {
       },
       seat: parsed.data.seat,
       trackDaily: parsed.data.trackDaily,
+      inLogbook: parsed.data.inLogbook,
     });
     return NextResponse.json({ id: saved.flight.id });
   } catch (error) {
