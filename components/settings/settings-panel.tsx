@@ -14,6 +14,7 @@ import type { Prefs } from "@/lib/i18n/messages";
 import { MAP_STYLE_IDS, MAP_STYLES } from "@/lib/map-styles";
 import { ChromeSwitcher } from "@/components/chrome/chrome-switcher";
 import { TrackedObjectsList } from "@/components/map/tracked-objects-list";
+import { WidgetSettings } from "@/components/settings/widget-settings";
 import { useTrackedAircraft } from "@/lib/use-tracked-aircraft";
 import type { TrackedAircraftView } from "@/lib/tracked-aircraft-types";
 
@@ -188,6 +189,8 @@ export function SettingsPanel({
           <p className="mt-2 text-xs leading-snug text-muted-foreground">{t("map.objectHint")}</p>
         </Card>
       </div>
+
+      <WidgetSettings />
 
       <div>
         <p className="mb-2 px-1 text-sm text-muted-foreground">{t("settings.appearance")}</p>

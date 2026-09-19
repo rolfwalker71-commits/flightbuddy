@@ -9,6 +9,8 @@ const publicPaths = [
   "/register",
   "/api/auth",
   "/api/health",
+  // Bearer-token auth inside the route (Scriptable widget); /token checks the session itself.
+  "/api/widget",
   "/s",
   "/manifest.webmanifest",
   "/sw.js",

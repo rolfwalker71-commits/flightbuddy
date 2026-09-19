@@ -53,6 +53,9 @@ model User {
   notifPref   NotificationPreference?
   trips       Trip[]
   shareLinks  ShareLink[]
+  widgetToken WidgetToken?
+  /// Scriptable widget options (appearance, visible fields) — applied on the next widget refresh.
+  widgetOptions Json?
 }
 
 model Airport {
@@ -320,4 +323,16 @@ model ApiLog {
   createdAt  DateTime @default(now())
 
   @@index([provider, createdAt])
+}
+
+/// Read-only bearer token for home-screen widgets (Scriptable). Only the SHA-256 hash is stored.
+model WidgetToken {
+  id         String    @id @default(cuid())
+  userId     String    @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  /// Last characters of the token so the user can recognise it in settings.
+  hint       String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
 }
