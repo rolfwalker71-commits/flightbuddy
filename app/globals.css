@@ -20,6 +20,18 @@ html {
   --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
   --surface-container: 277 38% 95%;
   --app-font-scale: 1;
+  --rail-offset: 14rem;
+}
+
+.glass-scroll-edge {
+  display: none;
+}
+
+.fb-map-stage {
+  --stage-top: 0.75rem;
+  --stage-bottom: 0.75rem;
+  --stage-left: 0.75rem;
+  --stage-right: 0.75rem;
 }
 
 @media (min-width: 1024px) {
@@ -211,45 +223,6 @@ html.dark[data-chrome="desktop"] {
   --tile-radius: 0.375rem;
 }
 
-html[data-chrome="ios"] {
-  --background: 210 18% 94%;
-  --foreground: 222 20% 12%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 20% 12%;
-  --primary: 191 90% 32%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 210 16% 94%;
-  --muted: 210 16% 94%;
-  --muted-foreground: 215 12% 40%;
-  --border: 214 16% 84%;
-  --ring: 191 90% 32%;
-  --radius: 0.75rem;
-  --tile-radius: 1rem;
-  --surface-container: 210 16% 94%;
-  --shadow-card: 0 0.2rem 0.75rem hsl(222 20% 12% / 0.07), 0 0.0625rem 0.25rem hsl(222 20% 12% / 0.05);
-  --dock-pad-top: 0.375rem;
-  --dock-pad-left: max(0.75rem, env(safe-area-inset-left, 0px));
-  --dock-pad-right: max(0.75rem, env(safe-area-inset-right, 0px));
-  --dock-pad-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
-  --dock-inner: 3.25rem;
-}
-
-html.dark[data-chrome="ios"] {
-  --background: 222 14% 4%;
-  --foreground: 240 5% 96%;
-  --card: 222 12% 11%;
-  --card-foreground: 240 5% 96%;
-  --primary: 187 100% 62%;
-  --primary-foreground: 222 47% 6%;
-  --secondary: 228 10% 16%;
-  --muted: 228 10% 16%;
-  --muted-foreground: 240 5% 64%;
-  --border: 228 10% 24%;
-  --ring: 187 100% 62%;
-  --surface-container: 222 12% 11%;
-  --shadow-card: 0 0.4rem 1.25rem hsl(0 0% 0% / 0.45);
-}
-
 html[data-chrome="android"] header.app-topbar {
   border-bottom-color: transparent;
   background: hsl(var(--surface-container));
@@ -270,10 +243,6 @@ html[data-chrome="desktop"] aside.app-rail {
 
 html[data-chrome="desktop"] .fb-card {
   box-shadow: inset 0 0 0 1px hsl(var(--border) / 0.8);
-}
-
-html[data-chrome="ios"] .fb-card {
-  box-shadow: var(--shadow-card), inset 0 0 0 1px hsl(var(--border));
 }
 
 .fb-tile {
@@ -409,4 +378,757 @@ html[data-chrome="desktop"] .aircraft-history-sheet {
 
 html[data-chrome="android"] .aircraft-history-sheet {
   border-radius: 1.75rem 0 0 1.75rem;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Liquid Glass (iOS 26 / iPadOS 26)                                         */
+/*                                                                           */
+/* Content stays on solid grouped surfaces; only the navigation layer —      */
+/* tab bar, sidebar, sheets, map overlays and floating controls — is glass.  */
+/* ------------------------------------------------------------------------ */
+
+html[data-chrome="ios"] {
+  --background: 240 24% 96%;
+  --foreground: 0 0% 0%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 0%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 0%;
+  --primary: 211 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 6% 93%;
+  --secondary-foreground: 0 0% 0%;
+  --muted: 240 6% 93%;
+  --muted-foreground: 240 4% 46%;
+  --accent: 211 100% 95%;
+  --accent-foreground: 211 100% 40%;
+  --destructive: 4 100% 59%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 135 59% 49%;
+  --success-foreground: 0 0% 100%;
+  --warning: 35 100% 50%;
+  --warning-foreground: 35 100% 12%;
+  --border: 240 6% 88%;
+  --input: 240 6% 88%;
+  --ring: 211 100% 50%;
+  --radius: 0.875rem;
+  --tile-radius: 1.5rem;
+  --surface-container: 240 6% 93%;
+  --shadow-card: none;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", sans-serif;
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --ease-emphasized: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Glass material */
+  --glass-tint: hsl(0 0% 100% / 0.56);
+  --glass-tint-strong: hsl(0 0% 100% / 0.74);
+  --glass-filter: blur(1.25rem) saturate(1.9) brightness(1.05);
+  --glass-edge: hsl(0 0% 0% / 0.07);
+  --glass-inner: inset 0 1px 0.5px hsl(0 0% 100% / 0.95), inset 0 -1px 1px hsl(0 0% 100% / 0.4);
+  --glass-shadow: 0 0.5rem 2rem hsl(0 0% 0% / 0.1), 0 0.125rem 0.375rem hsl(0 0% 0% / 0.06);
+  --glass-rim: linear-gradient(
+    135deg,
+    hsl(0 0% 100% / 0.95),
+    hsl(0 0% 100% / 0.25) 38%,
+    hsl(0 0% 100% / 0.08) 62%,
+    hsl(0 0% 100% / 0.7)
+  );
+  --glass-lens: hsl(240 3% 49% / 0.16);
+  --glass-fill: hsl(240 3% 49% / 0.12);
+  --glass-thumb: hsl(0 0% 100%);
+  --glass-thumb-shadow: 0 0.1875rem 0.5rem hsl(0 0% 0% / 0.12), 0 0.1875rem 0.0625rem hsl(0 0% 0% / 0.04);
+
+  /* Layout — iPhone: floating tab bar at the bottom */
+  --dock-inner: 3.5rem;
+  --dock-pad-top: 0;
+  --dock-pad-left: max(1.25rem, env(safe-area-inset-left, 0px));
+  --dock-pad-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  --dock-pad-bottom: max(0.75rem, calc(env(safe-area-inset-bottom, 0px) - 0.25rem));
+  --app-main-pb: calc(var(--dock-offset) + 1.25rem);
+  --fab-bottom: calc(var(--dock-offset) + 0.75rem);
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.dark[data-chrome="ios"] {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --card: 240 3% 11%;
+  --card-foreground: 0 0% 100%;
+  --popover: 240 3% 11%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 210 100% 52%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 3% 18%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 240 3% 18%;
+  --muted-foreground: 240 3% 60%;
+  --accent: 210 60% 18%;
+  --accent-foreground: 210 100% 70%;
+  --destructive: 3 100% 61%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 135 64% 50%;
+  --success-foreground: 0 0% 100%;
+  --warning: 36 100% 52%;
+  --warning-foreground: 36 100% 10%;
+  --border: 240 3% 22%;
+  --input: 240 3% 22%;
+  --ring: 210 100% 52%;
+  --surface-container: 240 3% 18%;
+
+  --glass-tint: hsl(240 4% 20% / 0.48);
+  --glass-tint-strong: hsl(240 4% 14% / 0.72);
+  --glass-filter: blur(1.25rem) saturate(1.7);
+  --glass-edge: hsl(0 0% 0% / 0.5);
+  --glass-inner: inset 0 1px 0.5px hsl(0 0% 100% / 0.22), inset 0 -1px 1px hsl(0 0% 100% / 0.06);
+  --glass-shadow: 0 0.5rem 2rem hsl(0 0% 0% / 0.5), 0 0.125rem 0.375rem hsl(0 0% 0% / 0.3);
+  --glass-rim: linear-gradient(
+    135deg,
+    hsl(0 0% 100% / 0.42),
+    hsl(0 0% 100% / 0.08) 38%,
+    hsl(0 0% 100% / 0.03) 62%,
+    hsl(0 0% 100% / 0.24)
+  );
+  --glass-lens: hsl(0 0% 100% / 0.14);
+  --glass-fill: hsl(240 3% 49% / 0.24);
+  --glass-thumb: hsl(240 2% 39%);
+  --glass-thumb-shadow: 0 0.1875rem 0.5rem hsl(0 0% 0% / 0.35);
+}
+
+/* iPad portrait: the tab bar floats at the top, centred */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  html[data-chrome="ios"] {
+    --dock-inner: 3rem;
+    --dock-pad-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    --dock-pad-bottom: 0;
+    --app-header-pad: calc(var(--dock-pad-top) + var(--dock-inner) + 1.5rem);
+    --app-main-pb: 2.5rem;
+    --fab-bottom: max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem));
+  }
+}
+
+/* iPad landscape: floating glass sidebar */
+@media (min-width: 1024px) {
+  html[data-chrome="ios"] {
+    --rail-offset: calc(15rem + max(0.75rem, env(safe-area-inset-left, 0px)) + 0.5rem);
+    --app-main-pb: 2.5rem;
+    --fab-bottom: max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem));
+  }
+}
+
+/* --- Material ----------------------------------------------------------- */
+
+html[data-chrome="ios"] :is(.glass-surface, .fb-float, .fb-map-control, .fb-nav-button, .glass-fab) {
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-inner), 0 0 0 0.5px var(--glass-edge), var(--glass-shadow);
+  border-color: transparent;
+}
+
+/* Text-heavy glass (panels, sheets) gets the denser "regular" material */
+html[data-chrome="ios"] :is(.glass-sidebar, .fb-float, [data-slot="dialog-content"], .aircraft-history-sheet) {
+  background: var(--glass-tint-strong);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-inner), 0 0 0 0.5px var(--glass-edge), var(--glass-shadow);
+  border-color: transparent;
+}
+
+/* Specular rim light — a 1px gradient ring following the corner radius */
+html[data-chrome="ios"]
+  :is(
+    .glass-surface,
+    .fb-float,
+    .fb-map-control,
+    .fb-nav-button,
+    .glass-fab,
+    [data-slot="dialog-content"],
+    .aircraft-history-sheet
+  )::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+html[data-chrome="ios"] :is(.fb-map-control, .fb-nav-button, .glass-fab) {
+  position: relative;
+  border-radius: 9999px;
+  color: hsl(var(--foreground));
+  transition: transform 0.45s var(--ease-spring), background-color 0.2s ease;
+}
+
+html[data-chrome="ios"] :is(.fb-map-control, .fb-nav-button, .glass-fab):active {
+  transform: scale(0.9);
+}
+
+/* Prominent (tinted) glass for the primary floating action */
+html[data-chrome="ios"] .glass-fab {
+  width: 3.5rem !important;
+  height: 3.5rem !important;
+  padding: 0;
+  background: hsl(var(--primary) / 0.86);
+  color: hsl(var(--primary-foreground));
+  box-shadow:
+    inset 0 1px 0.5px hsl(0 0% 100% / 0.5),
+    inset 0 -1px 1px hsl(0 0% 0% / 0.12),
+    0 0.5rem 1.5rem hsl(var(--primary) / 0.35),
+    0 0.125rem 0.375rem hsl(0 0% 0% / 0.12);
+}
+
+/* --- Scroll edge effect -------------------------------------------------- */
+
+html[data-chrome="ios"] .glass-scroll-edge {
+  display: block;
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 35;
+  height: calc(env(safe-area-inset-top, 0px) + 1.25rem);
+  pointer-events: none;
+  background: linear-gradient(to bottom, hsl(var(--background) / 0.8), hsl(var(--background) / 0));
+  -webkit-backdrop-filter: blur(0.375rem);
+  backdrop-filter: blur(0.375rem);
+  -webkit-mask-image: linear-gradient(to bottom, #000 50%, transparent);
+  mask-image: linear-gradient(to bottom, #000 50%, transparent);
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  html[data-chrome="ios"] .glass-scroll-edge {
+    height: calc(var(--dock-pad-top) + var(--dock-inner) + 1rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  html[data-chrome="ios"] .glass-scroll-edge {
+    left: var(--rail-offset);
+  }
+}
+
+/* --- Tab bar ------------------------------------------------------------- */
+
+html[data-chrome="ios"] .app-dock {
+  pointer-events: none;
+}
+
+html[data-chrome="ios"] .glass-tabbar {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  align-items: stretch;
+  width: 100%;
+  max-width: 26rem;
+  height: var(--dock-inner);
+  margin-inline: auto;
+  padding: 0.25rem;
+  border-radius: 9999px;
+  pointer-events: auto;
+}
+
+html[data-chrome="ios"] .glass-tab-indicator {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0.25rem;
+  z-index: 0;
+  width: calc((100% - 0.5rem) / var(--n));
+  border-radius: 9999px;
+  background: var(--glass-lens);
+  box-shadow: inset 0 1px 0.5px hsl(0 0% 100% / 0.25);
+  transform: translateX(calc(var(--i) * 100%));
+  transition: transform 0.55s var(--ease-spring);
+}
+
+html[data-chrome="ios"] .glass-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  border-radius: 9999px;
+  color: hsl(var(--foreground));
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  transition: transform 0.4s var(--ease-spring), color 0.2s ease;
+}
+
+html[data-chrome="ios"] .glass-tab:active {
+  transform: scale(0.92);
+}
+
+html[data-chrome="ios"] :is(.glass-tab, .glass-rail-item)[data-active="true"] {
+  color: hsl(var(--primary));
+}
+
+html[data-chrome="ios"] .glass-tab .glass-tab-icon {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+html[data-chrome="ios"] .glass-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  html[data-chrome="ios"] .app-dock {
+    top: 0;
+    bottom: auto;
+  }
+
+  html[data-chrome="ios"] .glass-tabbar {
+    grid-template-columns: repeat(var(--n), 7.5rem);
+    width: max-content;
+    max-width: none;
+  }
+
+  html[data-chrome="ios"] .glass-tab {
+    flex-direction: row;
+    gap: 0.375rem;
+    font-size: 0.8rem;
+  }
+
+  html[data-chrome="ios"] .glass-tab .glass-tab-icon {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+}
+
+/* --- Sidebar (iPad landscape) ------------------------------------------- */
+
+html[data-chrome="ios"] aside.glass-sidebar {
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.75rem, env(safe-area-inset-left, 0px));
+  width: 15rem;
+  padding: 1.25rem 0.625rem;
+  border: 0;
+  border-radius: 1.75rem;
+}
+
+html[data-chrome="ios"] .glass-rail-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  height: 2.75rem;
+  border-radius: 9999px;
+  background: var(--glass-lens);
+  box-shadow: inset 0 1px 0.5px hsl(0 0% 100% / 0.25);
+  transform: translateY(calc(var(--i) * 3rem));
+  transition: transform 0.55s var(--ease-spring);
+}
+
+html[data-chrome="ios"] .glass-rail-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 2.75rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding-inline: 0.875rem;
+  border-radius: 9999px;
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: transform 0.4s var(--ease-spring);
+}
+
+html[data-chrome="ios"] .glass-rail-item[data-active="true"] {
+  font-weight: 600;
+}
+
+html[data-chrome="ios"] .glass-rail-item:active {
+  transform: scale(0.97);
+}
+
+html[data-chrome="ios"] .glass-rail-item .glass-tab-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* --- Content surfaces ---------------------------------------------------- */
+
+html[data-chrome="ios"] .fb-card {
+  box-shadow: none;
+}
+
+html[data-chrome="ios"] main h1.text-2xl {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+}
+
+html[data-chrome="ios"] .fb-float {
+  border-radius: 1.5rem;
+}
+
+/* --- Controls ------------------------------------------------------------ */
+
+html[data-chrome="ios"] [data-slot="button"] {
+  position: relative;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: transform 0.4s var(--ease-spring), background-color 0.2s ease, opacity 0.2s ease;
+}
+
+html[data-chrome="ios"] [data-slot="button"]:active {
+  transform: scale(0.96);
+}
+
+html[data-chrome="ios"] [data-slot="button"][data-variant="default"] {
+  box-shadow:
+    inset 0 1px 0.5px hsl(0 0% 100% / 0.4),
+    inset 0 -1px 1px hsl(0 0% 0% / 0.1),
+    0 0.25rem 0.875rem hsl(var(--primary) / 0.28);
+}
+
+html[data-chrome="ios"] [data-slot="button"]:is([data-variant="secondary"], [data-variant="outline"]) {
+  border-color: transparent;
+  background: var(--glass-fill);
+  color: hsl(var(--foreground));
+  box-shadow: inset 0 1px 0.5px hsl(0 0% 100% / 0.3);
+}
+
+html[data-chrome="ios"] [data-slot="button"][data-variant="destructive"] {
+  box-shadow: inset 0 1px 0.5px hsl(0 0% 100% / 0.35);
+}
+
+html[data-chrome="ios"] [data-slot="input"] {
+  border-color: transparent;
+  border-radius: 0.875rem;
+  background: var(--glass-fill);
+}
+
+html[data-chrome="ios"] [data-slot="input"]:focus-visible {
+  background: hsl(var(--card));
+}
+
+html[data-chrome="ios"] [data-slot="segmented"] {
+  position: relative;
+  background: var(--glass-fill);
+}
+
+html[data-chrome="ios"] [data-slot="segmented-trigger"] {
+  position: relative;
+  z-index: 1;
+  transition: color 0.2s ease;
+}
+
+html[data-chrome="ios"] [data-slot="segmented-trigger"][data-active="true"] {
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+[data-slot="segmented-indicator"] {
+  display: none;
+}
+
+html[data-chrome="ios"] [data-slot="segmented-indicator"] {
+  position: absolute;
+  top: 0.125rem;
+  bottom: 0.125rem;
+  left: 0.125rem;
+  z-index: 0;
+  display: block;
+  width: calc((100% - 0.25rem) / var(--n));
+  border-radius: 9999px;
+  background: var(--glass-thumb);
+  box-shadow: var(--glass-thumb-shadow), inset 0 1px 0.5px hsl(0 0% 100% / 0.35);
+  transform: translateX(calc(var(--i) * 100%));
+  transition: transform 0.5s var(--ease-spring);
+}
+
+html[data-chrome="ios"] [data-slot="switch"][data-state="checked"] {
+  background: hsl(var(--success));
+}
+
+html[data-chrome="ios"] [data-slot="switch"][data-state="unchecked"] {
+  background: var(--glass-fill);
+}
+
+html[data-chrome="ios"] [data-slot="switch-thumb"] {
+  width: 1.5rem;
+  box-shadow: var(--glass-thumb-shadow);
+  transition: transform 0.4s var(--ease-spring), width 0.3s var(--ease-spring);
+}
+
+/* Liquid Glass switch: the thumb stretches while pressed */
+html[data-chrome="ios"] [data-slot="switch"]:active [data-slot="switch-thumb"] {
+  width: 1.875rem;
+}
+
+html[data-chrome="ios"] [data-slot="switch"][data-state="checked"]:active [data-slot="switch-thumb"] {
+  transform: translateX(0.625rem);
+}
+
+/* --- Sheets -------------------------------------------------------------- */
+
+html[data-chrome="ios"] [data-slot="dialog-overlay"] {
+  background: hsl(0 0% 0% / 0.22);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-chrome="ios"] [data-slot="dialog-grabber"] {
+  width: 2.25rem;
+  height: 0.3125rem;
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+html[data-chrome="ios"] [data-slot="dialog-close"] {
+  z-index: 1;
+  background: var(--glass-fill);
+  color: hsl(var(--foreground));
+  box-shadow: inset 0 1px 0.5px hsl(0 0% 100% / 0.3);
+}
+
+@keyframes glass-sheet-up {
+  from {
+    translate: 0 calc(100% + 2rem);
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes glass-sheet-down {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: 0 calc(100% + 2rem);
+  }
+}
+
+@keyframes glass-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes glass-pop-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.94;
+  }
+}
+
+@keyframes glass-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes glass-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+html[data-chrome="ios"] [data-slot="dialog-overlay"][data-state="open"] {
+  animation: glass-fade-in 0.3s ease both;
+}
+
+html[data-chrome="ios"] [data-slot="dialog-overlay"][data-state="closed"] {
+  animation: glass-fade-out 0.25s ease both;
+}
+
+/* iPhone: floating bottom sheet, concentric with the display corners */
+@media (max-width: 767.98px) {
+  html[data-chrome="ios"] [data-slot="dialog-content"] {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: max(0.5rem, calc(env(safe-area-inset-bottom, 0px) - 1.5rem));
+    width: auto;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 1.5rem);
+    border-radius: 2.25rem;
+  }
+
+  html[data-chrome="ios"] [data-slot="dialog-content"][data-state="open"] {
+    animation: glass-sheet-up 0.55s var(--ease-emphasized) both;
+  }
+
+  html[data-chrome="ios"] [data-slot="dialog-content"][data-state="closed"] {
+    animation: glass-sheet-down 0.35s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+}
+
+/* iPad: centred form sheet */
+@media (min-width: 768px) {
+  html[data-chrome="ios"] [data-slot="dialog-content"] {
+    border-radius: 2rem;
+  }
+
+  html[data-chrome="ios"] [data-slot="dialog-content"][data-state="open"] {
+    animation: glass-pop-in 0.45s var(--ease-spring) both;
+  }
+
+  html[data-chrome="ios"] [data-slot="dialog-content"][data-state="closed"] {
+    animation: glass-pop-out 0.2s ease-in both;
+  }
+}
+
+@keyframes glass-sidesheet-in {
+  from {
+    transform: translateX(calc(100% + 1.5rem));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes glass-sidesheet-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(100% + 1.5rem));
+  }
+}
+
+html[data-chrome="ios"] .aircraft-history-sheet {
+  top: max(0.5rem, env(safe-area-inset-top, 0px));
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  width: calc(100% - 1rem);
+  border: 0;
+  border-radius: 2rem;
+  overflow: hidden;
+}
+
+html[data-chrome="ios"] .aircraft-history-sheet[data-state="open"] {
+  animation: glass-sidesheet-in 0.55s var(--ease-emphasized) both;
+}
+
+html[data-chrome="ios"] .aircraft-history-sheet[data-state="closed"] {
+  animation: glass-sidesheet-out 0.35s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+html[data-chrome="ios"] .aircraft-history-backdrop {
+  background: hsl(0 0% 0% / 0.22);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* --- Full-bleed map: the live map runs under the glass chrome ----------- */
+
+html[data-chrome="ios"] .fb-map-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  height: auto;
+  margin: 0;
+  --stage-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  --stage-bottom: calc(var(--dock-offset) + 0.75rem);
+  --stage-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  --stage-right: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  html[data-chrome="ios"] .fb-map-stage {
+    --stage-top: calc(var(--dock-pad-top) + var(--dock-inner) + 0.75rem);
+    --stage-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 1024px) {
+  html[data-chrome="ios"] .fb-map-stage {
+    --stage-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    --stage-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    --stage-left: calc(var(--rail-offset) + 0.25rem);
+  }
+}
+
+html[data-chrome="ios"] .fb-map-stage .maplibregl-ctrl-bottom-right,
+html[data-chrome="ios"] .fb-map-stage .maplibregl-ctrl-bottom-left {
+  bottom: calc(var(--stage-bottom) - 0.75rem);
+}
+
+/* --- Accessibility & fallbacks ------------------------------------------ */
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  html[data-chrome="ios"] {
+    --glass-tint: hsl(var(--card) / 0.96);
+    --glass-tint-strong: hsl(var(--card) / 0.98);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-chrome="ios"] {
+    --glass-tint: hsl(var(--card));
+    --glass-tint-strong: hsl(var(--card));
+    --glass-filter: none;
+  }
+
+  html[data-chrome="ios"] .glass-scroll-edge {
+    background: hsl(var(--background));
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  html[data-chrome="ios"] {
+    --glass-tint: hsl(var(--card) / 0.9);
+    --glass-tint-strong: hsl(var(--card) / 0.95);
+    --glass-edge: hsl(var(--foreground) / 0.45);
+    --glass-lens: hsl(var(--foreground) / 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-chrome="ios"] :is(
+      .glass-tab-indicator,
+      .glass-rail-indicator,
+      [data-slot="segmented-indicator"],
+      [data-slot="switch-thumb"],
+      [data-slot="button"],
+      .glass-tab,
+      .glass-rail-item,
+      .fb-map-control,
+      .fb-nav-button,
+      .glass-fab
+    ) {
+    transition: none;
+  }
+
+  html[data-chrome="ios"] :is([data-slot="dialog-content"], .aircraft-history-sheet)[data-state] {
+    animation: glass-fade-in 0.2s ease both;
+  }
+
+  html[data-chrome="ios"] :is([data-slot="dialog-content"], .aircraft-history-sheet)[data-state="closed"] {
+    animation: glass-fade-out 0.15s ease both;
+  }
 }

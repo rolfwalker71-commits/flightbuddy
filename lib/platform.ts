@@ -19,9 +19,19 @@ function uaPlatform(): string {
   return `${uaData?.platform ?? ""} ${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`;
 }
 
-/** OS hint for auto. Never returns ios — iPhone stays MY3 unless forced. */
-export function detectOsHint(): "android" | "desktop" | null {
+/** iPhone, iPod and iPad — including iPadOS, which reports itself as a touch-enabled Mac. */
+export function isAppleMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const blob = uaPlatform().toLowerCase();
+  if (blob.includes("android")) return false;
+  if (/iphone|ipad|ipod/.test(blob)) return true;
+  return blob.includes("mac") && (navigator.maxTouchPoints ?? 0) > 1;
+}
+
+/** OS hint for auto: iPhone/iPad → Liquid Glass, Android → MY3, Windows → Fluent. */
+export function detectOsHint(): ChromeStyle | null {
   if (typeof navigator === "undefined") return null;
+  if (isAppleMobile()) return "ios";
   const blob = uaPlatform().toLowerCase();
   if (blob.includes("android")) return "android";
   if (blob.includes("win")) return "desktop";
@@ -65,9 +75,7 @@ export function isIslandChrome(style: ChromeStyle): boolean {
 }
 
 export function dockBarClass(style: ChromeStyle): string {
-  if (style === "ios") {
-    return "rounded-2xl bg-card p-1 shadow-lg shadow-black/10 ring-1 ring-border";
-  }
+  if (style === "ios") return "glass-tabbar glass-surface";
   if (style === "android") {
     return "rounded-none border-t border-transparent bg-[hsl(var(--surface-container))] p-0 shadow-none ring-0";
   }
@@ -75,7 +83,7 @@ export function dockBarClass(style: ChromeStyle): string {
 }
 
 export function listTileClass(style: ChromeStyle): string {
-  if (style === "ios") return "rounded-2xl shadow-lg shadow-black/10 ring-1 ring-border";
+  if (style === "ios") return "rounded-[var(--tile-radius)] shadow-none ring-0";
   if (style === "android") return "rounded-[var(--tile-radius)] shadow-none ring-0";
   return "rounded-[var(--tile-radius)] shadow-none ring-1 ring-border/80";
 }
@@ -85,17 +93,15 @@ export function panelClass(style: ChromeStyle): string {
 }
 
 export function fabClass(style: ChromeStyle): string {
-  if (style === "ios") return "size-14 rounded-full shadow-lg";
+  if (style === "ios") return "glass-fab size-14 rounded-full";
   if (style === "android") return "size-16 rounded-[1.75rem] shadow-md";
   return "size-12 rounded-md shadow-sm";
 }
 
 export function fabClearance(style: ChromeStyle, docks: 1 | 2 = 1): string {
-  if (style === "ios") {
-    return docks === 2
-      ? "calc(10.25rem + env(safe-area-inset-bottom))"
-      : "calc(5.5rem + env(safe-area-inset-bottom))";
-  }
+  // Liquid Glass: the tab bar floats at the bottom on iPhone but moves to the top on iPad,
+  // so the clearance lives in CSS (see --fab-bottom in globals.css).
+  if (style === "ios") return docks === 2 ? "calc(var(--fab-bottom) + 4.75rem)" : "var(--fab-bottom)";
   if (style === "android") {
     return docks === 2
       ? "calc(10.5rem + env(safe-area-inset-bottom))"
@@ -109,7 +115,7 @@ export function fabClearance(style: ChromeStyle, docks: 1 | 2 = 1): string {
 export function chromeThemeColor(style: ChromeStyle, dark: boolean): string {
   if (style === "android") return dark ? "#141218" : "#f7f2fa";
   if (style === "desktop") return dark ? "#202020" : "#f3f3f3";
-  return dark ? "#1c1c1e" : "#ffffff";
+  return dark ? "#000000" : "#f2f2f7";
 }
 
-export const CHROME_BOOT_SCRIPT = `(function(){try{var k="flightbuddy-chrome";var p=localStorage.getItem(k);if(p!=="auto"&&p!=="ios"&&p!=="android"&&p!=="desktop")p="auto";var c=p;if(p==="auto"){var n=navigator;var d=n.userAgentData&&n.userAgentData.platform||"";var blob=(d+" "+(n.platform||"")+" "+(n.userAgent||"")).toLowerCase();if(blob.indexOf("android")!==-1)c="android";else if(blob.indexOf("win")!==-1)c="desktop";else c=window.matchMedia("(min-width: 1024px)").matches?"desktop":"android";}document.documentElement.dataset.chrome=c;}catch(e){document.documentElement.dataset.chrome="android";}})();`;
+export const CHROME_BOOT_SCRIPT = `(function(){try{var k="flightbuddy-chrome";var p=localStorage.getItem(k);if(p!=="auto"&&p!=="ios"&&p!=="android"&&p!=="desktop")p="auto";var c=p;if(p==="auto"){var n=navigator;var d=n.userAgentData&&n.userAgentData.platform||"";var blob=(d+" "+(n.platform||"")+" "+(n.userAgent||"")).toLowerCase();if(blob.indexOf("android")!==-1)c="android";else if(/iphone|ipad|ipod/.test(blob)||(blob.indexOf("mac")!==-1&&(n.maxTouchPoints||0)>1))c="ios";else if(blob.indexOf("win")!==-1)c="desktop";else c=window.matchMedia("(min-width: 1024px)").matches?"desktop":"android";}document.documentElement.dataset.chrome=c;}catch(e){document.documentElement.dataset.chrome="android";}})();`;

@@ -42,9 +42,11 @@ const DialogContent = React.forwardRef<
       }}
       {...props}
     >
-      <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted md:hidden" />
+      <div data-slot="dialog-grabber" className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted md:hidden" />
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground">
+      <DialogPrimitive.Close
+        data-slot="dialog-close"
+        className="absolute right-4 top-4 flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground">
         <X className="size-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>

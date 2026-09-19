@@ -46,17 +46,22 @@ function syncThemeColor(style: ChromeStyle) {
 
 export function ChromeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreference] = useState<ChromePreference>("auto");
+  const [mounted, setMounted] = useState(false);
   const wide = useWideViewport();
-  const chrome = resolveChromeStyle(preference, wide);
+  // The server can't see the device, so the first client render must match its "android"
+  // default; the boot script has already set html[data-chrome] for the real CSS in the meantime.
+  const chrome: ChromeStyle = mounted ? resolveChromeStyle(preference, wide) : "android";
 
   useEffect(() => {
     setPreference(readChromePreference());
+    setMounted(true);
   }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     applyChromeStyle(chrome);
     syncThemeColor(chrome);
-  }, [chrome]);
+  }, [chrome, mounted]);
 
   const value = useMemo<ChromeContextValue>(
     () => ({

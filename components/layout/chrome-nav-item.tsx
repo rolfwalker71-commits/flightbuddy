@@ -18,19 +18,32 @@ export function ChromeNavItem({
   chrome: ChromeStyle;
   layout: "dock" | "rail";
 }) {
+  if (chrome === "ios") {
+    // Liquid Glass: the moving selection lens is drawn by the parent; items stay transparent.
+    return (
+      <Link
+        href={href}
+        data-active={active}
+        aria-current={active ? "page" : undefined}
+        className={layout === "rail" ? "glass-rail-item" : "glass-tab"}
+      >
+        <Icon className="glass-tab-icon" strokeWidth={active ? 2.25 : 1.75} />
+        <span className="glass-tab-label">{label}</span>
+      </Link>
+    );
+  }
+
   if (layout === "rail") {
     return (
       <Link
         href={href}
         className={cn(
           "relative flex min-h-12 items-center gap-3 px-3 text-sm font-medium",
-          chrome === "desktop" ? "rounded-md" : chrome === "android" ? "rounded-full" : "rounded-xl",
+          chrome === "desktop" ? "rounded-md" : "rounded-full",
           active
             ? chrome === "desktop"
               ? "bg-primary/10 text-primary"
-              : chrome === "android"
-                ? "bg-secondary text-primary"
-                : "bg-muted text-primary"
+              : "bg-secondary text-primary"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >
@@ -66,32 +79,17 @@ export function ChromeNavItem({
     );
   }
 
-  if (chrome === "desktop") {
-    return (
-      <Link
-        href={href}
-        className={cn(
-          "relative flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-sm px-1 py-1.5",
-          active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
-        )}
-      >
-        <Icon className="size-5" />
-        <span className="max-w-full text-center text-[0.6875rem] font-medium leading-snug break-words">{label}</span>
-        {active ? <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
-      </Link>
-    );
-  }
-
   return (
     <Link
       href={href}
       className={cn(
-        "flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-[0.7rem] font-medium",
-        active ? "bg-muted text-foreground" : "text-muted-foreground",
+        "relative flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-sm px-1 py-1.5",
+        active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
       )}
     >
-      <Icon className="size-4" />
-      <span className="leading-snug break-words">{label}</span>
+      <Icon className="size-5" />
+      <span className="max-w-full text-center text-[0.6875rem] font-medium leading-snug break-words">{label}</span>
+      {active ? <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
     </Link>
   );
 }

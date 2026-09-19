@@ -15,3 +15,9 @@ export const mobileNav: { href: string; labelKey: MessageKey; icon: typeof Plane
   { href: "/logbook", labelKey: "nav.log", icon: BookOpen },
   { href: "/settings", labelKey: "nav.me", icon: User },
 ];
+
+/** Flight detail pages belong to the Flights tab; everything else matches exactly. */
+export function isNavActive(href: string, pathname: string): boolean {
+  if (href === "/") return pathname === "/" || pathname.startsWith("/flights/");
+  return pathname === href || pathname.startsWith(`${href}/`);
+}

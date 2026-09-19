@@ -69,7 +69,11 @@ export function FlightDetailView({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/" className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-container">
+        <Link
+          href="/"
+          aria-label={t("nav.flights")}
+          className="fb-nav-button flex h-12 w-12 items-center justify-center rounded-full bg-surface-container"
+        >
           <ArrowLeft className="size-4" />
         </Link>
         <h1 className="text-lg font-semibold">{displayFlightNumber(flight.flightNumber)}</h1>

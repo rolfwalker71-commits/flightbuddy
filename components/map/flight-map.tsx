@@ -841,7 +841,7 @@ export function FlightMap({
             disabled={locating}
             aria-label={t("map.locate")}
             title={t("map.locate")}
-            className="flex h-12 w-12 items-center justify-center rounded-[var(--radius)] bg-card text-foreground disabled:opacity-50"
+            className="fb-map-control flex h-12 w-12 items-center justify-center rounded-[var(--radius)] bg-card text-foreground disabled:opacity-50"
           >
             <Crosshair className={cn("size-4", locating && "animate-pulse")} />
           </button>
@@ -851,7 +851,7 @@ export function FlightMap({
               onClick={resumePlaneFollow}
               aria-label={t("map.followPlane")}
               title={t("map.followPlane")}
-              className="flex h-12 w-12 items-center justify-center rounded-[var(--radius)] bg-card text-foreground"
+              className="fb-map-control flex h-12 w-12 items-center justify-center rounded-[var(--radius)] bg-card text-foreground"
             >
               <Plane className="size-4" />
             </button>

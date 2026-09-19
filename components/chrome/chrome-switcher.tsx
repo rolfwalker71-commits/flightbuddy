@@ -22,7 +22,7 @@ export function ChromeSwitcher({ className }: { className?: string }) {
             key={option.value}
             type="button"
             className={cn(
-              "flex h-10 min-h-0 items-center justify-center rounded-full px-1 text-sm font-medium leading-none",
+              "flex min-h-10 items-center justify-center rounded-full px-1 py-1 text-center text-sm font-medium leading-tight",
               preference === option.value
                 ? "bg-secondary text-primary shadow-none"
                 : "text-muted-foreground",

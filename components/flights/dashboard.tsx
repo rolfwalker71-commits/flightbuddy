@@ -11,7 +11,7 @@ import { FlightCard } from "./flight-card";
 import { AddFlightDialog } from "./add-flight-dialog";
 import { HomeHeroMap } from "./home-hero-map";
 import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
 import { useChrome } from "@/components/chrome/chrome-provider";
 import { fabClass, fabClearance } from "@/lib/platform";
 import { isLiveStatus } from "@/lib/flight-status";
@@ -72,7 +72,7 @@ export function Dashboard({
           <Link
             href="/alerts"
             aria-label={t("nav.alerts")}
-            className="relative flex h-12 w-12 items-center justify-center rounded-full bg-surface-container lg:hidden"
+            className="fb-nav-button relative flex h-12 w-12 items-center justify-center rounded-full bg-surface-container lg:hidden"
           >
             <Bell className="size-4" />
             {unreadAlerts > 0 && (
@@ -88,24 +88,16 @@ export function Dashboard({
         </div>
       </header>
 
-      <div data-slot="segmented" className="flex h-10 min-h-10 items-center rounded-full bg-muted p-0.5">
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            data-slot="segmented-trigger"
-            data-active={tab === item.id}
-            onClick={() => setTab(item.id)}
-            className={cn(
-              "flex h-full min-h-0 flex-1 items-center justify-center gap-2 rounded-full py-0 text-sm font-medium leading-none",
-              tab === item.id ? "bg-secondary text-primary" : "text-muted-foreground",
-            )}
-          >
-            {item.id === "upcoming" && <Plane className="size-4" />}
-            {t(item.labelKey)}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        className="flex-nowrap"
+        value={tab}
+        onChange={setTab}
+        options={tabs.map((item) => ({
+          id: item.id,
+          label: t(item.labelKey),
+          icon: item.id === "upcoming" ? <Plane className="hidden size-4 shrink-0 sm:block" /> : undefined,
+        }))}
+      />
 
       <div className="grid grid-cols-3 gap-3 lg:hidden">
         <Card className="p-3 text-center">

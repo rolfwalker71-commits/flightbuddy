@@ -169,14 +169,19 @@ export function LiveMapView({
   const trafficSpeed = selectedTraffic ? formatSpeedPair(selectedTraffic.speedKts, locale) : null;
 
   return (
-    <div className="relative -mx-4 h-[calc(100dvh-var(--app-header-pad)-var(--app-main-pb))] md:-mx-8">
+    <div className="fb-map-stage relative -mx-4 h-[calc(100dvh-var(--app-header-pad)-var(--app-main-pb))] md:-mx-8">
       <FlightMap
         className="absolute inset-0"
         flights={mapFlights}
         focusedFlightId={selectedFlight?.flight.id}
         followCamera={false}
         showLocate
-        locateClassName={cn("right-3 top-3", showDetail && detailOpen ? "md:right-[21.5rem]" : "md:right-16")}
+        locateClassName={cn(
+          "right-[var(--stage-right)] top-[var(--stage-top)]",
+          showDetail && detailOpen
+            ? "md:right-[calc(var(--stage-right)+20.75rem)]"
+            : "md:right-[calc(var(--stage-right)+3.25rem)]",
+        )}
         viewportTraffic={trafficOn ? traffic.aircraft : undefined}
         selectedTrafficId={selectedTraffic?.icao24}
         onViewportChange={onViewportChange}
@@ -184,7 +189,7 @@ export function LiveMapView({
         onSelectTraffic={selectTraffic}
       />
 
-      <Card className="absolute left-3 top-3 z-10 max-w-[16.5rem] p-3 md:hidden">
+      <Card className="fb-float absolute left-[var(--stage-left)] top-[var(--stage-top)] z-10 max-w-[16.5rem] p-3 md:hidden">
         <ViewportTrafficToggle id="viewport-traffic-mobile" on={trafficOn} onToggle={setTrafficOn} traffic={traffic} />
         {objects.items.length > 0 && (
           <div className="mt-3">
@@ -201,8 +206,8 @@ export function LiveMapView({
         )}
       </Card>
 
-      <div className="absolute left-3 top-3 z-10 hidden space-y-2 md:block">
-        <Card className="w-80 p-3">
+      <div className="absolute left-[var(--stage-left)] top-[var(--stage-top)] z-10 hidden space-y-2 md:block">
+        <Card className="fb-float w-80 p-3">
           <ViewportTrafficToggle
             id="viewport-traffic-desktop"
             on={trafficOn}
@@ -210,7 +215,7 @@ export function LiveMapView({
             traffic={traffic}
           />
         </Card>
-        <Card className={cn("p-0", trackedOpen ? "w-80 max-h-[60vh] overflow-y-auto" : "w-11")}>
+        <Card className={cn("fb-float p-0", trackedOpen ? "w-80 max-h-[60vh] overflow-y-auto" : "w-11")}>
           {trackedOpen ? (
             <div className="p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -299,8 +304,9 @@ export function LiveMapView({
       {showDetail && (
         <Card
           className={cn(
-            "absolute z-10 overflow-hidden p-0",
-            "bottom-3 left-3 right-3 md:bottom-auto md:left-auto md:right-3 md:top-3",
+            "fb-float absolute z-10 overflow-hidden p-0",
+            "bottom-[var(--stage-bottom)] left-[var(--stage-left)] right-[var(--stage-right)]",
+            "md:bottom-auto md:left-auto md:top-[var(--stage-top)]",
             detailOpen ? "md:w-80" : "md:w-11",
           )}
         >
