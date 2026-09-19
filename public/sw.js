@@ -1,4 +1,4 @@
-const CACHE = "flightbuddy-v1";
+const CACHE = "flightbuddy-v2";
 const OFFLINE = ["/offline.html", "/icons/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
