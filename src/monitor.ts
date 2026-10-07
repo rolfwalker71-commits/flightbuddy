@@ -65,7 +65,7 @@ export class Monitor {
         if (w.last_seen == null && now > w.sched_dep + GIVE_UP_AFTER_DEP_MS) { w.active = 0; this.store.save(w); continue; }
         if (!w.reminder_sent && now >= w.sched_dep - REMINDER_BEFORE_DEP_MS && now < w.sched_dep) {
           w.reminder_sent = 1;
-          if (w.alert_takeoff) await this.reminder(w);
+          if (w.alert_reminder) await this.reminder(w);
           this.store.save(w);
         }
       }
@@ -202,7 +202,7 @@ export class Monitor {
           "attributes-type": "FlightActivityAttributes",
           attributes: {
             watchId: w.id, title: w.title, originIATA: w.origin_iata, destinationIATA: w.dest_iata,
-            airlineIATA: w.airline_iata, airlineName: w.airline_name,
+            airlineIATA: w.airline_iata, airlineName: w.airline_name, destinationTimeZone: w.dest_tz,
           },
         },
       },

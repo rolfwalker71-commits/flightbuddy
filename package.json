@@ -7,7 +7,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx test/simulate.ts && tsx test/sources.ts",
+    "test": "tsx test/simulate.ts && tsx test/sources.ts && tsx test/schedule.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

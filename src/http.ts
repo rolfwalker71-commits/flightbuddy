@@ -3,10 +3,12 @@ import { timingSafeEqual } from "node:crypto";
 import type { AirplanesLive, TrafficSource } from "./airplanes.ts";
 import type { OpenSky } from "./opensky.ts";
 import { toPublic, trafficMeta } from "./traffic.ts";
+import { localDate } from "./schedule.ts";
 import { config } from "./config.ts";
 import type { Store } from "./db.ts";
 import type { PushSender } from "./apns.ts";
 import type { Monitor } from "./monitor.ts";
+import type { AeroDataBox, ScheduleMonitor } from "./schedule.ts";
 
 function json(res: import("node:http").ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -36,7 +38,12 @@ function authorized(req: IncomingMessage): boolean {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
-type TrafficInfo = { source: string; airplanes: AirplanesLive | null; opensky: OpenSky | null };
+type TrafficInfo = { source: string; airplanes: AirplanesLive | null; opensky: OpenSky | null; aero?: AeroDataBox; schedule?: ScheduleMonitor };
+
+function validTz(v: unknown): string | null {
+  if (typeof v !== "string" || !v || v.length > 64) return null;
+  try { new Intl.DateTimeFormat("de-CH", { timeZone: v }); return v; } catch { return null; }
+}
 
 export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, push: PushSender, traffic: TrafficSource): Server {
   const airplanes = info.airplanes;
@@ -64,6 +71,10 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
           apns: push.info,
           watches: store.activeWatches().length,
           airplanes: airplanes ? { lastOk: airplanes.lastOk, lastError: airplanes.lastError } : { demo: info.source === "demo" },
+          schedule: info.aero ? {
+            configured: info.aero.configured, lastOk: info.aero.lastOk, lastError: info.aero.lastError,
+            callsThisMonth: info.schedule?.callsThisMonth() ?? 0, unitsRemaining: info.aero.unitsRemaining,
+          } : null,
           traffic: {
             source: info.source,
             opensky: info.opensky
@@ -110,6 +121,32 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
           store.deleteSetting("opensky.clientId"); store.deleteSetting("opensky.clientSecret");
           os.setCredentials(config.opensky.clientId, config.opensky.clientSecret, config.opensky.clientId ? "env" : null);
           return json(res, 200, { ok: true, configured: os.configured, source: os.source });
+        }
+      }
+
+      // --- AeroDataBox-Schlüssel aus der App (nur schreibend; Verspätung, Gate, Annullierung) ---
+      if (path === "/v1/settings/aerodatabox" && info.aero) {
+        const aero = info.aero;
+        if (req.method === "PUT") {
+          const b = await readJson(req);
+          const key = typeof b.apiKey === "string" ? b.apiKey.trim() : "";
+          if (!key || key.length > 200 || /\s/.test(key)) return json(res, 400, { error: "apiKey erforderlich (ohne Leerzeichen)" });
+          const prev = store.getSetting("aerodatabox.key") ?? config.aerodatabox.key;
+          aero.setKey(key);
+          try {
+            // Eine einzige Abfrage prüft den Schlüssel: 401/403 heisst ungültig, «keine Daten» heisst gültig.
+            await aero.lookup("LX1", localDate(Date.now(), config.displayTz));
+          } catch (e) {
+            aero.setKey(prev);
+            return json(res, 400, { error: e instanceof Error ? e.message : "AeroDataBox lehnt den Schlüssel ab" });
+          }
+          store.setSetting("aerodatabox.key", key);
+          return json(res, 200, { ok: true, configured: true });
+        }
+        if (req.method === "DELETE") {
+          store.deleteSetting("aerodatabox.key");
+          aero.setKey(config.aerodatabox.key);
+          return json(res, 200, { ok: true, configured: aero.configured });
         }
       }
 
@@ -193,10 +230,22 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
             origin_iata: str(o.iata, 3), origin_lat: num(o.lat), origin_lon: num(o.lon),
             dest_iata: str(d.iata, 3), dest_lat: num(d.lat), dest_lon: num(d.lon),
             sched_dep: (() => { const t = num(b.scheduledDeparture); return t != null && t > 1e9 && t < 4e9 ? Math.round(t * 1000) : null; })(),
-            origin_tz: (() => { const z = str(o.tz, 64); if (!z) return null; try { new Intl.DateTimeFormat("de-CH", { timeZone: z }); return z; } catch { return null; } })(),
+            origin_tz: validTz(o.tz), dest_tz: validTz(d.tz),
+            flight_number: (() => { const n = str(b.flightNumber, 10)?.toUpperCase().replace(/[^A-Z0-9]/g, ""); return n && /^[A-Z0-9]{2,3}\d{1,4}[A-Z]?$/.test(n) ? n : null; })(),
+            alert_reminder: flag(a.reminder), alert_schedule: flag(a.schedule),
             alert_squawk: flag(a.squawk), alert_takeoff: flag(a.takeoff), alert_landing: flag(a.landing), alert_approach: flag(a.approach),
           });
           return json(res, 200, { ok: true });
+        } else if (req.method === "GET") {
+          const w = store.getWatch(id);
+          if (!w) return json(res, 404, { error: "unbekannt" });
+          const dep = w.dep_rev ?? w.sched_dep;
+          return json(res, 200, {
+            flightNumber: w.flight_number, status: w.sched_status, gate: w.gate, terminal: w.terminal,
+            scheduledDeparture: w.sched_dep, revisedDeparture: w.dep_rev,
+            delayMinutes: w.sched_dep != null && dep != null ? Math.round((dep - w.sched_dep) / 60_000) : null,
+            checkedAt: w.last_check,
+          });
         } else if (req.method === "DELETE") {
           store.deleteWatch(id);
           return json(res, 200, { ok: true });

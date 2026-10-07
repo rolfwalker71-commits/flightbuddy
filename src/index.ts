@@ -6,6 +6,7 @@ import { DemoTraffic } from "./demo.ts";
 import { createApi } from "./http.ts";
 import { Monitor } from "./monitor.ts";
 import { OpenSky } from "./opensky.ts";
+import { AeroDataBox, ScheduleMonitor } from "./schedule.ts";
 import { FallbackTraffic } from "./traffic.ts";
 
 const store = new Store(openDb());
@@ -25,8 +26,11 @@ else if (choice === "airplanes") { traffic = airplanes!; source = "airplanes"; }
 else { traffic = new FallbackTraffic(airplanes!, opensky!); source = "auto (airplanes.live, Ausweichquelle OpenSky)"; }
 
 const sender = createSender();
+// AeroDataBox (optional): in der App gespeicherter Schlüssel hat Vorrang vor der Umgebungsvariable.
+const aero = new AeroDataBox(store.getSetting("aerodatabox.key") ?? config.aerodatabox.key);
+const schedule = new ScheduleMonitor(store, aero, sender);
 const monitor = new Monitor(store, traffic, sender);
-const server = createApi(store, monitor, { source, airplanes, opensky }, sender, traffic);
+const server = createApi(store, monitor, { source, airplanes, opensky, aero, schedule }, sender, traffic);
 console.log(`Datenquelle: ${source}`);
 if (choice === "demo") console.warn("TRAFFIC_SOURCE=demo: simulierter Verkehr (SWR8 / DLH7XK ZRH → LHR), keine echten Flugdaten.");
 if (choice === "opensky" && !opensky!.configured) console.warn("OpenSky gewählt, aber OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET fehlen.");
@@ -34,7 +38,8 @@ if (choice === "opensky" && !opensky!.configured) console.warn("OpenSky gewählt
 if (!config.apiToken) console.warn("API_TOKEN ist nicht gesetzt: alle Endpunkte ausser /v1/health werden abgelehnt.");
 server.listen(config.port, () => console.log(`FlightBuddy-Server auf Port ${config.port}`));
 monitor.start();
+schedule.start();
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
-  process.on(sig, () => { monitor.stop(); server.close(() => process.exit(0)); });
+  process.on(sig, () => { monitor.stop(); schedule.stop(); server.close(() => process.exit(0)); });
 }

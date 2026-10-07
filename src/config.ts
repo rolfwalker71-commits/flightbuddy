@@ -19,6 +19,13 @@ export const config = {
     topic: env("APNS_TOPIC", "ch.rolfwalker.flightbuddy"),
   },
   opensky: { clientId: env("OPENSKY_CLIENT_ID"), clientSecret: env("OPENSKY_CLIENT_SECRET") },
+  /** AeroDataBox (optional): Verspätung, Gate, Annullierung. Der Schlüssel lässt sich auch in der App eintragen. */
+  aerodatabox: {
+    key: env("AERODATABOX_KEY"),
+    baseUrl: env("AERODATABOX_BASE_URL"),
+    /** Schutz des Monatskontingents: der kostenlose Tarif hat 600 Einheiten, eine Abfrage kostet etwa 2. */
+    maxCallsPerMonth: Number(env("AERODATABOX_MAX_CALLS", "250")),
+  },
   /** Zeitzone für Uhrzeiten in Meldungen. */
   displayTz: env("DISPLAY_TZ", "Europe/Zurich"),
   pollActiveMs: Number(env("POLL_ACTIVE_SECONDS", "15")) * 1000,

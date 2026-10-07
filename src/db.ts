@@ -37,6 +37,19 @@ export type Watch = {
   takeoff_at: number | null;
   sched_dep: number | null;
   origin_tz: string | null;
+  dest_tz: string | null;
+  flight_number: string | null;
+  alert_reminder: number;
+  alert_schedule: number;
+  sched_status: string | null;
+  dep_rev: number | null;
+  gate: string | null;
+  terminal: string | null;
+  notified_dep: number | null;
+  notified_gate: string | null;
+  notified_status: string | null;
+  next_check: number;
+  last_check: number | null;
   reminder_sent: number;
   created_at: number;
 };
@@ -77,6 +90,19 @@ export function openDb(path = config.dbPath): DatabaseSync {
     "ALTER TABLE watches ADD COLUMN takeoff_at INTEGER",
     "ALTER TABLE watches ADD COLUMN sched_dep INTEGER",
     "ALTER TABLE watches ADD COLUMN origin_tz TEXT",
+    "ALTER TABLE watches ADD COLUMN dest_tz TEXT",
+    "ALTER TABLE watches ADD COLUMN flight_number TEXT",
+    "ALTER TABLE watches ADD COLUMN alert_reminder INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE watches ADD COLUMN alert_schedule INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE watches ADD COLUMN sched_status TEXT",
+    "ALTER TABLE watches ADD COLUMN dep_rev INTEGER",
+    "ALTER TABLE watches ADD COLUMN gate TEXT",
+    "ALTER TABLE watches ADD COLUMN terminal TEXT",
+    "ALTER TABLE watches ADD COLUMN notified_dep INTEGER",
+    "ALTER TABLE watches ADD COLUMN notified_gate TEXT",
+    "ALTER TABLE watches ADD COLUMN notified_status TEXT",
+    "ALTER TABLE watches ADD COLUMN next_check INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE watches ADD COLUMN last_check INTEGER",
     "ALTER TABLE watches ADD COLUMN reminder_sent INTEGER NOT NULL DEFAULT 0",
   ]) {
     try { db.exec(sql); } catch { /* Spalte existiert bereits */ }
@@ -118,24 +144,35 @@ export class Store {
 
   upsertWatch(w: Pick<Watch, "id" | "device_token" | "hex" | "callsign" | "reg" | "title" | "airline_iata" | "airline_name"
     | "origin_iata" | "origin_lat" | "origin_lon" | "dest_iata" | "dest_lat" | "dest_lon"
-    | "alert_squawk" | "alert_takeoff" | "alert_landing" | "alert_approach"> & { sched_dep?: number | null; origin_tz?: string | null }) {
-    this.db
-      .prepare(
-        `INSERT INTO watches(id, device_token, hex, callsign, reg, title, airline_iata, airline_name,
-           origin_iata, origin_lat, origin_lon, dest_iata, dest_lat, dest_lon,
-           alert_squawk, alert_takeoff, alert_landing, alert_approach, created_at, sched_dep, origin_tz)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-         ON CONFLICT(id) DO UPDATE SET device_token=excluded.device_token, hex=COALESCE(excluded.hex, watches.hex),
-           callsign=excluded.callsign, reg=excluded.reg, title=excluded.title,
-           airline_iata=excluded.airline_iata, airline_name=excluded.airline_name,
-           origin_iata=excluded.origin_iata, origin_lat=excluded.origin_lat, origin_lon=excluded.origin_lon,
-           dest_iata=excluded.dest_iata, dest_lat=excluded.dest_lat, dest_lon=excluded.dest_lon,
-           alert_squawk=excluded.alert_squawk, alert_takeoff=excluded.alert_takeoff,
-           alert_landing=excluded.alert_landing, alert_approach=excluded.alert_approach, sched_dep=excluded.sched_dep, origin_tz=excluded.origin_tz, active=1`,
-      )
-      .run(w.id, w.device_token, w.hex, w.callsign, w.reg, w.title, w.airline_iata, w.airline_name,
-        w.origin_iata, w.origin_lat, w.origin_lon, w.dest_iata, w.dest_lat, w.dest_lon,
-        w.alert_squawk, w.alert_takeoff, w.alert_landing, w.alert_approach, Date.now(), w.sched_dep ?? null, w.origin_tz ?? null);
+    | "alert_squawk" | "alert_takeoff" | "alert_landing" | "alert_approach">
+    & Partial<Pick<Watch, "sched_dep" | "origin_tz" | "dest_tz" | "flight_number" | "alert_reminder" | "alert_schedule">>) {
+    const v: Record<string, string | number | null> = {
+      id: w.id, device_token: w.device_token, hex: w.hex, callsign: w.callsign, reg: w.reg, title: w.title,
+      airline_iata: w.airline_iata, airline_name: w.airline_name,
+      origin_iata: w.origin_iata, origin_lat: w.origin_lat, origin_lon: w.origin_lon,
+      dest_iata: w.dest_iata, dest_lat: w.dest_lat, dest_lon: w.dest_lon,
+      alert_squawk: w.alert_squawk, alert_takeoff: w.alert_takeoff, alert_landing: w.alert_landing, alert_approach: w.alert_approach,
+      alert_reminder: w.alert_reminder ?? 1, alert_schedule: w.alert_schedule ?? 1,
+      sched_dep: w.sched_dep ?? null, origin_tz: w.origin_tz ?? null, dest_tz: w.dest_tz ?? null,
+      flight_number: w.flight_number ?? null, created_at: Date.now(),
+    };
+    const cols = Object.keys(v);
+    // Bei erneutem Abgleich bleibt der Zustand erhalten; ändern sich Flugnummer oder Abflug, wird neu geprüft.
+    const update = cols.filter((c) => c !== "id" && c !== "created_at" && c !== "hex")
+      .map((c) => `${c}=excluded.${c}`).join(", ");
+    this.db.prepare(
+      `INSERT INTO watches(${cols.join(",")}) VALUES(${cols.map(() => "?").join(",")})
+       ON CONFLICT(id) DO UPDATE SET hex=COALESCE(excluded.hex, watches.hex), ${update},
+         next_check=CASE WHEN excluded.flight_number IS NOT watches.flight_number OR excluded.sched_dep IS NOT watches.sched_dep THEN 0 ELSE watches.next_check END,
+         active=1`,
+    ).run(...Object.values(v));
+  }
+
+  /** Fahrplanzustand (AeroDataBox) speichern. */
+  saveSchedule(w: Watch) {
+    this.db.prepare(
+      `UPDATE watches SET sched_status=?, dep_rev=?, gate=?, terminal=?, notified_dep=?, notified_gate=?, notified_status=?, next_check=?, last_check=? WHERE id=?`,
+    ).run(w.sched_status, w.dep_rev, w.gate, w.terminal, w.notified_dep, w.notified_gate, w.notified_status, w.next_check, w.last_check, w.id);
   }
 
   deleteWatch(id: string) {
