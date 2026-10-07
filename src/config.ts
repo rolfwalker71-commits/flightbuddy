@@ -8,8 +8,8 @@ export const config = {
   port: Number(env("PORT", "8787")),
   dbPath: env("DB_PATH", "./data/flightbuddy.sqlite"),
   apiToken: env("API_TOKEN"),
-  /** "airplanes" (Standard) oder "demo": simulierter Verkehr zum Testen ohne airplanes.live. */
-  trafficSource: env("TRAFFIC_SOURCE", "airplanes").toLowerCase(),
+  /** "auto" (Standard): airplanes.live, bei Fehlern OpenSky (falls Zugangsdaten gesetzt). Weitere Werte: "airplanes", "opensky", "demo". */
+  trafficSource: env("TRAFFIC_SOURCE", "auto").toLowerCase(),
   airplanesBase: env("AIRPLANES_BASE_URL", "https://api.airplanes.live/v2"),
   contact: env("AIRPLANES_CONTACT", "rolf@rolfwalker.ch"),
   apns: {
@@ -18,6 +18,7 @@ export const config = {
     teamId: env("APNS_TEAM_ID", "9XZWUZ7Z26"),
     topic: env("APNS_TOPIC", "ch.rolfwalker.flightbuddy"),
   },
+  opensky: { clientId: env("OPENSKY_CLIENT_ID"), clientSecret: env("OPENSKY_CLIENT_SECRET") },
   pollActiveMs: Number(env("POLL_ACTIVE_SECONDS", "15")) * 1000,
   pollIdleMs: Number(env("POLL_IDLE_SECONDS", "60")) * 1000,
 };

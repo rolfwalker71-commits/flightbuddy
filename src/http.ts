@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import type { AirplanesLive } from "./airplanes.ts";
+import type { AirplanesLive, TrafficSource } from "./airplanes.ts";
+import type { OpenSky } from "./opensky.ts";
+import { toPublic } from "./traffic.ts";
 import { config } from "./config.ts";
 import type { Store } from "./db.ts";
 import type { PushSender } from "./apns.ts";
@@ -34,7 +36,20 @@ function authorized(req: IncomingMessage): boolean {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
-export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLive | null, push: PushSender): Server {
+type TrafficInfo = { source: string; airplanes: AirplanesLive | null; opensky: OpenSky | null };
+
+export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, push: PushSender, traffic: TrafficSource): Server {
+  const airplanes = info.airplanes;
+  // Kurzer Cache: Karte und Suche der App sollen die Quelle (Limit bzw. Credits) nicht mehrfach belasten.
+  const cache = new Map<string, { at: number; data: unknown }>();
+  const cached = async <T,>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> => {
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return hit.data as T;
+    const data = await fn();
+    cache.set(key, { at: Date.now(), data });
+    if (cache.size > 200) for (const [k, v] of cache) if (Date.now() - v.at > ttlMs) cache.delete(k);
+    return data;
+  };
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://x");
@@ -48,7 +63,13 @@ export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLi
           monitorError: monitor.lastError,
           apns: push.info,
           watches: store.activeWatches().length,
-          airplanes: airplanes ? { lastOk: airplanes.lastOk, lastError: airplanes.lastError } : { demo: true },
+          airplanes: airplanes ? { lastOk: airplanes.lastOk, lastError: airplanes.lastError } : { demo: info.source === "demo" },
+          traffic: {
+            source: info.source,
+            opensky: info.opensky
+              ? { configured: info.opensky.configured, source: info.opensky.source, lastOk: info.opensky.lastOk, lastError: info.opensky.lastError, credits: info.opensky.creditsRemaining }
+              : null,
+          },
         });
       }
       if (!authorized(req)) return json(res, 401, { error: "unauthorized" });
@@ -61,6 +82,66 @@ export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLi
         const startToken = str(b.pushToStartToken, 400);
         if (startToken && /^[0-9a-f]+$/i.test(startToken)) store.setStartToken(token, startToken);
         return json(res, 200, { ok: true });
+      }
+
+      // --- OpenSky-Zugangsdaten aus der App (nur schreibend: der Server gibt das Secret nie zurück) ---
+      if (path === "/v1/settings/opensky" && info.opensky) {
+        const os = info.opensky;
+        if (req.method === "PUT") {
+          const b = await readJson(req);
+          const id = typeof b.clientId === "string" ? b.clientId.trim() : "";
+          const secret = typeof b.clientSecret === "string" ? b.clientSecret.trim() : "";
+          if (!id || !secret || id.length > 200 || secret.length > 200 || /\s/.test(id + secret)) return json(res, 400, { error: "clientId und clientSecret erforderlich (ohne Leerzeichen)" });
+          const prev = { id: store.getSetting("opensky.clientId"), secret: store.getSetting("opensky.clientSecret"), source: os.source };
+          os.setCredentials(id, secret, "app");
+          try {
+            await os.verify();
+          } catch (e) {
+            // Zurück zum bisherigen Stand: falsche Eingaben dürfen funktionierende Daten nicht überschreiben.
+            if (prev.id && prev.secret) os.setCredentials(prev.id, prev.secret, "app");
+            else os.setCredentials(config.opensky.clientId, config.opensky.clientSecret, config.opensky.clientId ? "env" : null);
+            return json(res, 400, { error: e instanceof Error ? e.message : "OpenSky lehnt die Zugangsdaten ab" });
+          }
+          store.setSetting("opensky.clientId", id);
+          store.setSetting("opensky.clientSecret", secret);
+          return json(res, 200, { ok: true, configured: true, source: "app" });
+        }
+        if (req.method === "DELETE") {
+          store.deleteSetting("opensky.clientId"); store.deleteSetting("opensky.clientSecret");
+          os.setCredentials(config.opensky.clientId, config.opensky.clientSecret, config.opensky.clientId ? "env" : null);
+          return json(res, 200, { ok: true, configured: os.configured, source: os.source });
+        }
+      }
+
+      // --- Verkehr für die App (das iPhone hat keinen direkten Zugang zu airplanes.live) ---
+      if (req.method === "GET" && path.startsWith("/v1/traffic/")) {
+        const [, , , kind, rest = ""] = path.split("/");
+        const arg = decodeURIComponent(rest);
+        let list;
+        if (kind === "near") {
+          const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
+          const radius = Math.min(250, Math.max(1, Number(url.searchParams.get("radius") ?? 50)));
+          if (![lat, lon, radius].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return json(res, 400, { error: "lat/lon/radius" });
+          list = await cached(`near:${lat.toFixed(1)}:${lon.toFixed(1)}:${Math.round(radius / 10)}`, 5_000, () => traffic.near(lat, lon, radius));
+        } else if (kind === "hex" && /^[0-9a-f]{6}$/i.test(arg)) {
+          list = await cached(`hex:${arg}`, 4_000, () => traffic.byHex([arg]));
+        } else if (kind === "reg" && /^[A-Za-z0-9-]{2,12}$/.test(arg)) {
+          list = await cached(`reg:${arg.toUpperCase()}`, 4_000, () => traffic.byRegistration(arg));
+        } else if (kind === "callsign" && /^[A-Za-z0-9]{2,10}$/.test(arg)) {
+          list = await cached(`cs:${arg.toUpperCase()}`, 4_000, async () => (await traffic.byCallsign(arg)));
+        } else return json(res, 400, { error: "unbekannte Abfrage" });
+        return json(res, 200, { aircraft: list.map(toPublic) });
+      }
+
+      if (req.method === "GET" && path === "/v1/resolve") {
+        const q = (url.searchParams.get("q") ?? "").trim().toUpperCase().replace(/\s+/g, "");
+        if (!/^[A-Z0-9-]{2,12}$/.test(q)) return json(res, 400, { error: "q" });
+        const result = await cached(`resolve:${q}`, 20_000, async () => {
+          if (/^[0-9A-F]{6}$/.test(q) && /\d/.test(q) && !/^[A-Z]{3}\d/.test(q)) return { aircraft: await traffic.byHex([q.toLowerCase()]), partial: false };
+          if (q.includes("-")) return { aircraft: await traffic.byRegistration(q), partial: false };
+          return traffic.searchCallsign(q);
+        });
+        return json(res, 200, { aircraft: result.aircraft.map(toPublic), partial: result.partial });
       }
 
       if (req.method === "POST" && path === "/v1/test-push") {

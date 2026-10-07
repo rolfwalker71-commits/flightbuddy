@@ -25,6 +25,10 @@ npm start
 | PUT | `/v1/watches/{uuid}` | Flug beobachten: `{deviceToken, title, hex?\|callsign?\|registration?, airlineIATA?, airlineName?, origin?:{iata,lat,lon}, destination?:{…}, alerts?:{squawk,takeoff,landing,approach}}` |
 | DELETE | `/v1/watches/{uuid}` | Beobachtung beenden |
 | PUT/DELETE | `/v1/watches/{uuid}/live-activity` | `{pushToken}` der Live Activity |
+| GET | `/v1/resolve?q=` | Flugzeug finden (Hex, Registration oder Callsign; `SWR64` findet `SWR64E`) |
+| GET | `/v1/traffic/near?lat&lon&radius`, `/v1/traffic/{hex,callsign,reg}/{wert}` | Flugdaten für die App (das iPhone braucht keinen eigenen Zugang zu airplanes.live) |
+| PUT/DELETE | `/v1/settings/opensky` | OpenSky-Zugangsdaten `{clientId, clientSecret}` aus der App: werden geprüft und gespeichert, nie zurückgegeben |
+| POST | `/v1/test-push` | Testmeldung an ein Gerät, Apples Antwort wird durchgereicht |
 
 Live-Activity-Inhalt (`content-state`): `phase, phaseLabel, altitudeFt, speedKts, progress, etaTimestamp, emergency, distanceNm`.
 Push-Inhalt enthält `airlineIATA`; die App lädt das Logo selbst nach (Notification Service Extension), der Server hostet keine Logos.
@@ -45,3 +49,9 @@ curl -s localhost:8787/v1/health
 # docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 Die App muss den Server über HTTPS erreichen (Reverse-Proxy mit TLS davor). Port 8787 ist nur an localhost gebunden.
+
+## Datenquellen
+`TRAFFIC_SOURCE=auto` (Standard) fragt airplanes.live und nimmt bei einem Fehler OpenSky, sofern Zugangsdaten vorhanden sind
+(`OPENSKY_CLIENT_ID`/`OPENSKY_CLIENT_SECRET` oder per App gespeichert, die App-Eingabe hat Vorrang).
+OpenSky kennt keine Registration; Callsigns werden über einen globalen Abruf (4 Credits, 30 s zwischengespeichert) gefunden.
+`demo` simuliert einen Flug zum Testen ohne Freischaltung.

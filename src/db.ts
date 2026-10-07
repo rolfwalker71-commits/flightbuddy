@@ -63,6 +63,7 @@ export function openDb(path = config.dbPath): DatabaseSync {
       last_squawk TEXT, last_activity_push INTEGER NOT NULL DEFAULT 0, last_activity_sig TEXT,
       active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS watches_active ON watches(active);
     CREATE INDEX IF NOT EXISTS watches_device ON watches(device_token);
   `);
@@ -79,6 +80,16 @@ export function openDb(path = config.dbPath): DatabaseSync {
 
 export class Store {
   constructor(readonly db: DatabaseSync) {}
+
+  getSetting(key: string): string | undefined {
+    return (this.db.prepare(`SELECT value FROM settings WHERE key=?`).get(key) as { value: string } | undefined)?.value;
+  }
+  setSetting(key: string, value: string) {
+    this.db.prepare(`INSERT INTO settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(key, value);
+  }
+  deleteSetting(key: string) {
+    this.db.prepare(`DELETE FROM settings WHERE key=?`).run(key);
+  }
 
   upsertDevice(token: string, env: "sandbox" | "production") {
     this.db

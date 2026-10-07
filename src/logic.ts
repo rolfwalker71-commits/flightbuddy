@@ -60,6 +60,7 @@ export type Aircraft = {
   hex: string;
   callsign: string | null;
   registration: string | null;
+  type?: string | null;
   lat: number;
   lon: number;
   altitudeFt: number | null;

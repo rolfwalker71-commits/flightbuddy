@@ -1,4 +1,4 @@
-import type { TrafficSource } from "./airplanes.ts";
+import type { SearchResult, TrafficSource } from "./airplanes.ts";
 import type { Aircraft } from "./logic.ts";
 
 const ZRH = { lat: 47.4647, lon: 8.5492 };
@@ -66,5 +66,12 @@ export class DemoTraffic implements TrafficSource {
   async byRegistration(reg: string) {
     const hex = Object.keys(PLANES).find((h) => PLANES[h]!.registration === reg.toUpperCase());
     const a = hex ? this.at(hex) : null; return a ? [a] : [];
+  }
+
+  async near() { return Object.keys(PLANES).map((h) => this.at(h)).filter((a): a is Aircraft => a != null); }
+  async searchCallsign(query: string): Promise<SearchResult> {
+    const q = query.toUpperCase();
+    const hits = (await this.near()).filter((a) => a.callsign?.startsWith(q));
+    return { aircraft: hits, partial: false };
   }
 }

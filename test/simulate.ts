@@ -16,6 +16,8 @@ const traffic: TrafficSource = {
   async byHex(hexes) { return current && hexes.includes(current.hex) ? [current] : []; },
   async byCallsign(cs) { return current && current.callsign === cs ? [current] : []; },
   async byRegistration() { return []; },
+  async near() { return current ? [current] : []; },
+  async searchCallsign() { return { aircraft: current ? [current] : [], partial: false }; },
 };
 
 const base: Aircraft = { hex: "4b1814", callsign: "SWR8", registration: "HB-JNA", lat: ZRH.lat, lon: ZRH.lon,
@@ -66,6 +68,8 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   const trafficB: TrafficSource = {
     async byHex(h) { return planeB && h.includes(planeB.hex) ? [planeB] : []; },
     async byCallsign() { return []; }, async byRegistration() { return []; },
+    async near() { return planeB ? [planeB] : []; },
+    async searchCallsign() { return { aircraft: [], partial: false }; },
   };
   const storeB = new Store(openDb(":memory:"));
   const senderB = new DryRunSender();

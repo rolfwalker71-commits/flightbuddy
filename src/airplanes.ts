@@ -1,14 +1,22 @@
 import { config } from "./config.ts";
 import { normalizeSquawk, type Aircraft } from "./logic.ts";
 
+export type SearchResult = { aircraft: Aircraft[]; partial: boolean };
+
 export interface TrafficSource {
   byHex(hexes: string[]): Promise<Aircraft[]>;
   byCallsign(callsign: string): Promise<Aircraft[]>;
   byRegistration(reg: string): Promise<Aircraft[]>;
+  /** Flugzeuge im Umkreis (Kartenansicht). */
+  near(lat: number, lon: number, radiusNm: number): Promise<Aircraft[]>;
+  /** Callsign mit Toleranz für einen Buchstaben-Suffix (SWR64 findet SWR64E). */
+  searchCallsign(query: string): Promise<SearchResult>;
 }
 
+export const SUFFIXES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
 type Raw = {
-  hex: string; flight?: string; r?: string; lat?: number; lon?: number;
+  hex: string; flight?: string; r?: string; t?: string; lat?: number; lon?: number;
   alt_baro?: number | string; gs?: number; track?: number; baro_rate?: number; squawk?: string;
 };
 
@@ -19,6 +27,7 @@ function toAircraft(r: Raw): Aircraft | null {
     hex: r.hex.toLowerCase(),
     callsign: r.flight?.trim() || null,
     registration: r.r?.trim() || null,
+    type: r.t?.trim() || null,
     lat: r.lat,
     lon: r.lon,
     altitudeFt: ground ? 0 : typeof r.alt_baro === "number" ? r.alt_baro : null,
@@ -75,5 +84,25 @@ export class AirplanesLive implements TrafficSource {
   }
   byRegistration(reg: string) {
     return this.get(`reg/${encodeURIComponent(reg.toUpperCase())}`);
+  }
+  near(lat: number, lon: number, radiusNm: number) {
+    return this.get(`point/${lat.toFixed(4)}/${lon.toFixed(4)}/${Math.round(Math.min(Math.max(radiusNm, 1), 250))}`);
+  }
+
+  /**
+   * airplanes.live kennt keine Präfix-Suche: erst exakt, dann mit jedem Buchstaben A–Z probieren.
+   * Das braucht wegen des Limits bis zu 26 Anfragen; nach `budgetMs` wird mit dem bisherigen Stand abgebrochen.
+   */
+  async searchCallsign(query: string, budgetMs = 14_000): Promise<SearchResult> {
+    const q = query.toUpperCase().replace(/\s+/g, "");
+    const exact = await this.byCallsign(q);
+    if (exact.length) return { aircraft: exact, partial: false };
+    const deadline = Date.now() + budgetMs;
+    const found: Aircraft[] = [];
+    for (const letter of SUFFIXES) {
+      if (Date.now() > deadline) return { aircraft: found, partial: true };
+      found.push(...(await this.byCallsign(q + letter)));
+    }
+    return { aircraft: found, partial: false };
   }
 }

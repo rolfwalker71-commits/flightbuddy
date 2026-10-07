@@ -59,7 +59,8 @@ export class Monitor {
     for (const w of watches) {
       let ac = w.hex ? found.get(w.hex) : undefined;
       if (!ac && !w.hex) {
-        const list = w.reg ? await this.traffic.byRegistration(w.reg) : w.callsign ? await this.traffic.byCallsign(w.callsign) : [];
+        const list = w.reg ? await this.traffic.byRegistration(w.reg)
+          : w.callsign ? (await this.traffic.searchCallsign(w.callsign)).aircraft : [];
         ac = list[0];
       }
       await this.handle(w, ac);
