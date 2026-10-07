@@ -98,6 +98,15 @@ export class Monitor {
     }
     w.last_squawk = ac.squawk;
 
+    // Abflugzeit für die Fortschrittsanzeige: beobachteter Start, sonst aus der geflogenen Strecke geschätzt (einmalig).
+    if (!ac.onGround && w.takeoff_at == null) {
+      if (w.last_on_ground === 1) w.takeoff_at = now;
+      else if (origin && dest) {
+        const flownNm = progress(origin, dest, cur) * distanceNm(origin, dest);
+        w.takeoff_at = now - (flownNm / Math.max(ac.groundSpeedKts ?? 0, 250)) * 3600_000;
+      }
+    }
+
     // Start: nur wenn wir das Flugzeug zuvor am Boden gesehen haben
     if (!ac.onGround && w.last_on_ground === 1 && !w.takeoff_sent) {
       w.takeoff_sent = 1;
@@ -134,7 +143,7 @@ export class Monitor {
   }
 
   private buildState(
-    ac: Aircraft, phase: ReturnType<typeof phaseOf>, toDest: number | null,
+    w: Watch, ac: Aircraft, phase: ReturnType<typeof phaseOf>, toDest: number | null,
     origin: { lat: number; lon: number } | null, dest: { lat: number; lon: number } | null, eta: number | null,
   ) {
     return {
@@ -142,6 +151,7 @@ export class Monitor {
       altitudeFt: ac.altitudeFt, speedKts: ac.groundSpeedKts,
       progress: origin && dest ? progress(origin, dest, { lat: ac.lat, lon: ac.lon }) : null,
       etaTimestamp: eta != null ? Math.floor(Date.now() / 1000 + eta) : null, // Sekunden seit 1970
+      departureTimestamp: w.takeoff_at != null ? Math.floor(w.takeoff_at / 1000) : null,
       emergency: ac.squawk != null && EMERGENCY.has(ac.squawk),
       distanceNm: toDest,
     };
@@ -163,7 +173,7 @@ export class Monitor {
       payload: {
         aps: {
           timestamp: Math.floor(Date.now() / 1000), event: "start",
-          "content-state": this.buildState(ac, phase, toDest, origin, dest, eta),
+          "content-state": this.buildState(w, ac, phase, toDest, origin, dest, eta),
           "attributes-type": "FlightActivityAttributes",
           attributes: {
             watchId: w.id, title: w.title, originIATA: w.origin_iata, destinationIATA: w.dest_iata,
@@ -183,7 +193,7 @@ export class Monitor {
   ) {
     if (!w.activity_token) return;
     const now = Date.now();
-    const state = this.buildState(ac, phase, toDest, origin, dest, eta);
+    const state = this.buildState(w, ac, phase, toDest, origin, dest, eta);
     const sig = `${state.phase}|${Math.round((state.altitudeFt ?? 0) / 500)}|${Math.round((state.speedKts ?? 0) / 10)}|${Math.round((state.progress ?? 0) * 100)}|${state.emergency}`;
     if (!ending && (sig === w.last_activity_sig || now - w.last_activity_push < ACTIVITY_MIN_INTERVAL_MS)) return;
 

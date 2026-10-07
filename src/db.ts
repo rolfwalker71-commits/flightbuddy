@@ -34,6 +34,7 @@ export type Watch = {
   last_activity_sig: string | null;
   active: number;
   start_sent: number;
+  takeoff_at: number | null;
   created_at: number;
 };
 
@@ -69,6 +70,7 @@ export function openDb(path = config.dbPath): DatabaseSync {
   for (const sql of [
     "ALTER TABLE devices ADD COLUMN start_token TEXT",
     "ALTER TABLE watches ADD COLUMN start_sent INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE watches ADD COLUMN takeoff_at INTEGER",
   ]) {
     try { db.exec(sql); } catch { /* Spalte existiert bereits */ }
   }
@@ -139,9 +141,9 @@ export class Store {
     this.db
       .prepare(
         `UPDATE watches SET hex=?, last_seen=?, last_on_ground=?, was_airborne=?, takeoff_sent=?, approach_sent=?,
-           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=? WHERE id=?`,
+           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=?, takeoff_at=? WHERE id=?`,
       )
       .run(w.hex, w.last_seen, w.last_on_ground, w.was_airborne, w.takeoff_sent, w.approach_sent, w.landed_sent,
-        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.id);
+        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.takeoff_at, w.id);
   }
 }

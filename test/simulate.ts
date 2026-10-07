@@ -139,5 +139,9 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   const starts = sender.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "start");
   const ends = sender.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "end");
   assert.equal(starts.length, 1); assert.equal(ends.length, 1);
+  // Abflugzeit: beim Start gesetzt (beobachteter Abflug) und in allen späteren Updates unverändert
+  const deps = sender.sent.filter((p) => p.kind === "liveactivity").map((p) => (p.payload.aps as any)["content-state"].departureTimestamp);
+  assert.ok(deps.length > 3 && deps.every((d: unknown) => typeof d === "number"), "departureTimestamp fehlt");
+  assert.equal(new Set(deps).size, 1, "departureTimestamp darf sich nicht ändern");
   console.log("OK: Demo-Flug löst Start, Squawk, Anflug und Landung genau einmal aus.");
 }
