@@ -10,6 +10,11 @@ import {
 const APPROACH_MINUTES = 20;
 const ACTIVITY_MIN_INTERVAL_MS = 15_000;
 const UNSEEN_GIVE_UP_MS = 6 * 3600_000;
+/** Geplante Flüge schlafen bis kurz vor dem Abflug; das Flugzeug erscheint meist 1–2 Stunden vorher im ADS-B-Netz. */
+export const WAKE_BEFORE_DEP_MS = 4 * 3600_000;
+const REMINDER_BEFORE_DEP_MS = 3 * 3600_000;
+const GIVE_UP_AFTER_DEP_MS = 12 * 3600_000;
+const RESOLVE_RETRY_MS = 3 * 60_000;
 
 const alt = (ft: number | null) => (ft == null ? "–" : `${Math.round(ft).toLocaleString("de-CH")} ft`);
 
@@ -18,10 +23,13 @@ export class Monitor {
   lastTick: number | null = null;
   lastError: string | null = null;
 
+  private lastResolveTry = new Map<string, number>();
+
   constructor(
     private store: Store,
     private traffic: TrafficSource,
     private push: PushSender,
+    private now: () => number = () => Date.now(),
   ) {}
 
   start() {
@@ -46,8 +54,23 @@ export class Monitor {
 
   /** Ein Abfragezyklus. Gibt true zurück, wenn mindestens ein Flug in der Luft ist (häufiger abfragen). */
   async tick(): Promise<boolean> {
-    const watches = this.store.activeWatches();
-    this.lastTick = Date.now();
+    const now = this.now();
+    const all = this.store.activeWatches();
+    this.lastTick = now;
+    // Geplante Flüge schlafen bis 4 Stunden vor dem Abflug; wer lange nach dem Abflug nie gesehen wurde, wird beendet.
+    const watches: Watch[] = [];
+    for (const w of all) {
+      if (w.sched_dep != null) {
+        if (now < w.sched_dep - WAKE_BEFORE_DEP_MS) continue;
+        if (w.last_seen == null && now > w.sched_dep + GIVE_UP_AFTER_DEP_MS) { w.active = 0; this.store.save(w); continue; }
+        if (!w.reminder_sent && now >= w.sched_dep - REMINDER_BEFORE_DEP_MS && now < w.sched_dep) {
+          w.reminder_sent = 1;
+          if (w.alert_takeoff) await this.reminder(w);
+          this.store.save(w);
+        }
+      }
+      watches.push(w);
+    }
     if (!watches.length) return false;
 
     const found = new Map<string, Aircraft>();
@@ -58,7 +81,8 @@ export class Monitor {
     let busy = false;
     for (const w of watches) {
       let ac = w.hex ? found.get(w.hex) : undefined;
-      if (!ac && !w.hex) {
+      if (!ac && !w.hex && now - (this.lastResolveTry.get(w.id) ?? 0) >= RESOLVE_RETRY_MS) {
+        this.lastResolveTry.set(w.id, now);
         const list = w.reg ? await this.traffic.byRegistration(w.reg)
           : w.callsign ? (await this.traffic.searchCallsign(w.callsign)).aircraft : [];
         ac = list[0];
@@ -70,7 +94,7 @@ export class Monitor {
   }
 
   private async handle(w: Watch, ac: Aircraft | undefined) {
-    const now = Date.now();
+    const now = this.now();
     if (!ac) {
       if (w.last_seen && now - w.last_seen > UNSEEN_GIVE_UP_MS) {
         w.active = 0;
@@ -151,7 +175,7 @@ export class Monitor {
       phase, phaseLabel: PHASE_LABEL[phase],
       altitudeFt: ac.altitudeFt, speedKts: ac.groundSpeedKts,
       progress: origin && dest ? progress(origin, dest, { lat: ac.lat, lon: ac.lon }) : null,
-      etaTimestamp: eta != null ? Math.floor(Date.now() / 1000 + eta) : null, // Sekunden seit 1970
+      etaTimestamp: eta != null ? Math.floor(this.now() / 1000 + eta) : null, // Sekunden seit 1970
       departureTimestamp: w.takeoff_at != null ? Math.floor(w.takeoff_at / 1000) : null,
       emergency: ac.squawk != null && EMERGENCY.has(ac.squawk),
       distanceNm: toDest,
@@ -173,7 +197,7 @@ export class Monitor {
       kind: "liveactivity", deviceToken: device.start_token, env: device.env, priority: 10,
       payload: {
         aps: {
-          timestamp: Math.floor(Date.now() / 1000), event: "start",
+          timestamp: Math.floor(this.now() / 1000), event: "start",
           "content-state": this.buildState(w, ac, phase, toDest, origin, dest, eta),
           "attributes-type": "FlightActivityAttributes",
           attributes: {
@@ -193,7 +217,7 @@ export class Monitor {
     eta: number | null, ending: boolean,
   ) {
     if (!w.activity_token) return;
-    const now = Date.now();
+    const now = this.now();
     const state = this.buildState(w, ac, phase, toDest, origin, dest, eta);
     const sig = `${state.phase}|${Math.round((state.altitudeFt ?? 0) / 500)}|${Math.round((state.speedKts ?? 0) / 10)}|${Math.round((state.progress ?? 0) * 100)}|${state.emergency}`;
     if (!ending && (sig === w.last_activity_sig || now - w.last_activity_push < ACTIVITY_MIN_INTERVAL_MS)) return;
@@ -214,6 +238,13 @@ export class Monitor {
     } else if (res.gone) {
       w.activity_token = null;
     }
+  }
+
+  /** Erinnerung drei Stunden vor dem geplanten Abflug. */
+  private async reminder(w: Watch) {
+    const at = new Date(w.sched_dep!).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: config.displayTz });
+    const route = w.origin_iata && w.dest_iata ? `${w.origin_iata} → ${w.dest_iata} · ` : "";
+    await this.alert(w, { title: `${w.title} hebt in 3 Std. ab`, body: `${route}${at} Uhr`, level: "active", kind: "reminder" });
   }
 
   private async alert(w: Watch, a: { title: string; body: string; level: "active" | "time-sensitive"; kind: string }) {

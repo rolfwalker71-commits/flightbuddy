@@ -19,6 +19,8 @@ export const config = {
     topic: env("APNS_TOPIC", "ch.rolfwalker.flightbuddy"),
   },
   opensky: { clientId: env("OPENSKY_CLIENT_ID"), clientSecret: env("OPENSKY_CLIENT_SECRET") },
+  /** Zeitzone für Uhrzeiten in Meldungen. */
+  displayTz: env("DISPLAY_TZ", "Europe/Zurich"),
   pollActiveMs: Number(env("POLL_ACTIVE_SECONDS", "15")) * 1000,
   pollIdleMs: Number(env("POLL_IDLE_SECONDS", "60")) * 1000,
 };

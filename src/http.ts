@@ -192,6 +192,7 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
             airline_iata: str(b.airlineIATA, 3), airline_name: str(b.airlineName, 80),
             origin_iata: str(o.iata, 3), origin_lat: num(o.lat), origin_lon: num(o.lon),
             dest_iata: str(d.iata, 3), dest_lat: num(d.lat), dest_lon: num(d.lon),
+            sched_dep: (() => { const t = num(b.scheduledDeparture); return t != null && t > 1e9 && t < 4e9 ? Math.round(t * 1000) : null; })(),
             alert_squawk: flag(a.squawk), alert_takeoff: flag(a.takeoff), alert_landing: flag(a.landing), alert_approach: flag(a.approach),
           });
           return json(res, 200, { ok: true });

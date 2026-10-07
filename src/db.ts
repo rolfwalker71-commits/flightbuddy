@@ -35,6 +35,8 @@ export type Watch = {
   active: number;
   start_sent: number;
   takeoff_at: number | null;
+  sched_dep: number | null;
+  reminder_sent: number;
   created_at: number;
 };
 
@@ -72,6 +74,8 @@ export function openDb(path = config.dbPath): DatabaseSync {
     "ALTER TABLE devices ADD COLUMN start_token TEXT",
     "ALTER TABLE watches ADD COLUMN start_sent INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE watches ADD COLUMN takeoff_at INTEGER",
+    "ALTER TABLE watches ADD COLUMN sched_dep INTEGER",
+    "ALTER TABLE watches ADD COLUMN reminder_sent INTEGER NOT NULL DEFAULT 0",
   ]) {
     try { db.exec(sql); } catch { /* Spalte existiert bereits */ }
   }
@@ -112,24 +116,24 @@ export class Store {
 
   upsertWatch(w: Pick<Watch, "id" | "device_token" | "hex" | "callsign" | "reg" | "title" | "airline_iata" | "airline_name"
     | "origin_iata" | "origin_lat" | "origin_lon" | "dest_iata" | "dest_lat" | "dest_lon"
-    | "alert_squawk" | "alert_takeoff" | "alert_landing" | "alert_approach">) {
+    | "alert_squawk" | "alert_takeoff" | "alert_landing" | "alert_approach"> & { sched_dep?: number | null }) {
     this.db
       .prepare(
         `INSERT INTO watches(id, device_token, hex, callsign, reg, title, airline_iata, airline_name,
            origin_iata, origin_lat, origin_lon, dest_iata, dest_lat, dest_lon,
-           alert_squawk, alert_takeoff, alert_landing, alert_approach, created_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           alert_squawk, alert_takeoff, alert_landing, alert_approach, created_at, sched_dep)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET device_token=excluded.device_token, hex=COALESCE(excluded.hex, watches.hex),
            callsign=excluded.callsign, reg=excluded.reg, title=excluded.title,
            airline_iata=excluded.airline_iata, airline_name=excluded.airline_name,
            origin_iata=excluded.origin_iata, origin_lat=excluded.origin_lat, origin_lon=excluded.origin_lon,
            dest_iata=excluded.dest_iata, dest_lat=excluded.dest_lat, dest_lon=excluded.dest_lon,
            alert_squawk=excluded.alert_squawk, alert_takeoff=excluded.alert_takeoff,
-           alert_landing=excluded.alert_landing, alert_approach=excluded.alert_approach, active=1`,
+           alert_landing=excluded.alert_landing, alert_approach=excluded.alert_approach, sched_dep=excluded.sched_dep, active=1`,
       )
       .run(w.id, w.device_token, w.hex, w.callsign, w.reg, w.title, w.airline_iata, w.airline_name,
         w.origin_iata, w.origin_lat, w.origin_lon, w.dest_iata, w.dest_lat, w.dest_lon,
-        w.alert_squawk, w.alert_takeoff, w.alert_landing, w.alert_approach, Date.now());
+        w.alert_squawk, w.alert_takeoff, w.alert_landing, w.alert_approach, Date.now(), w.sched_dep ?? null);
   }
 
   deleteWatch(id: string) {
@@ -152,9 +156,9 @@ export class Store {
     this.db
       .prepare(
         `UPDATE watches SET hex=?, last_seen=?, last_on_ground=?, was_airborne=?, takeoff_sent=?, approach_sent=?,
-           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=?, takeoff_at=? WHERE id=?`,
+           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=?, takeoff_at=?, reminder_sent=? WHERE id=?`,
       )
       .run(w.hex, w.last_seen, w.last_on_ground, w.was_airborne, w.takeoff_sent, w.approach_sent, w.landed_sent,
-        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.takeoff_at, w.id);
+        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.takeoff_at, w.reminder_sent, w.id);
   }
 }

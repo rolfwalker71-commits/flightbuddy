@@ -149,3 +149,59 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   assert.equal(new Set(deps).size, 1, "departureTimestamp darf sich nicht ändern");
   console.log("OK: Demo-Flug löst Start, Squawk, Anflug und Landung genau einmal aus.");
 }
+
+// --- Szenario D: Flug auf Vorrat (Tage im Voraus hinterlegt) ---
+{
+  const H = 3600_000;
+  let clock = Date.parse("2026-10-27T00:00:00Z");
+  const dep = Date.parse("2026-10-28T12:05:00Z"); // 13:05 Uhr Schweizer Zeit (Winterzeit ab 25.10.)
+  let calls = 0;
+  let plane: Aircraft | null = null;
+  const traffic: TrafficSource = {
+    async byHex(h) { calls++; return plane && h.includes(plane.hex) ? [plane] : []; },
+    async byCallsign() { calls++; return plane ? [plane] : []; },
+    async byRegistration() { calls++; return []; },
+    async near() { calls++; return []; },
+    async searchCallsign(q) { calls++; return { aircraft: plane && plane.callsign!.startsWith(q) ? [plane] : [], partial: false }; },
+  };
+  const store = new Store(openDb(":memory:"));
+  const sender = new DryRunSender();
+  const mon = new Monitor(store, traffic, sender, () => clock);
+  store.upsertDevice("devtoken-plan", "sandbox");
+  store.upsertWatch({ id: "watch-plan-0001", device_token: "devtoken-plan", hex: null, callsign: "SWR64", reg: null, title: "LX64",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "MIA", dest_lat: 25.7932, dest_lon: -80.2906, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1, sched_dep: dep });
+  const alerts = () => sender.sent.filter((p) => p.kind === "alert").map((p) => (p.payload.aps as any).alert as { title: string; body: string });
+
+  // 1.5 Tage vorher: schläft, keine einzige Abfrage
+  await mon.tick(); clock += 12 * H; await mon.tick(); // 12 Stunden vorher
+  assert.equal(calls, 0, "ein geplanter Flug darf weit vor dem Abflug nichts abfragen");
+  assert.equal(alerts().length, 0);
+
+  // 4 Stunden vorher: wacht auf und sucht (Flugzeug noch nicht da)
+  clock = dep - 4 * H + 1000; await mon.tick();
+  assert.equal(calls, 1, "ab 4 Stunden vorher wird gesucht");
+  await mon.tick(); assert.equal(calls, 1, "die Suche wird auf alle 3 Minuten gedrosselt");
+  clock += 3 * 60_000; await mon.tick(); assert.equal(calls, 2);
+
+  // 3 Stunden vorher: genau eine Erinnerung
+  clock = dep - 3 * H + 1000; await mon.tick(); await mon.tick();
+  assert.equal(alerts().length, 1); assert.equal(alerts()[0]!.title, "LX64 hebt in 3 Std. ab");
+  assert.match(alerts()[0]!.body, /ZRH → MIA · 13:05 Uhr/);
+
+  // Flugzeug erscheint am Boden (mit Suffix), dann Abflug: normale Ereignisse
+  plane = { ...base, hex: "4b191e", callsign: "SWR64E", registration: "HB-JNI", lat: ZRH.lat, lon: ZRH.lon, onGround: true };
+  clock = dep - 60 * 60_000; await mon.tick();
+  assert.equal(store.getWatch("watch-plan-0001")!.hex, "4b191e", "Hex wird über das Callsign mit Suffix gefunden");
+  plane = { ...plane, onGround: false, altitudeFt: 3000, groundSpeedKts: 220, verticalRateFpm: 2200, lat: 47.5, lon: 8.2 };
+  clock = dep + 10 * 60_000; await mon.tick();
+  assert.ok(alerts().some((a) => a.title === "LX64 ist gestartet"));
+
+  // Nie gesehener Flug wird nach dem Abflug beendet
+  store.upsertWatch({ id: "watch-ghost-0001", device_token: "devtoken-plan", hex: null, callsign: "XXX1", reg: null, title: "XX1",
+    airline_iata: null, airline_name: null, origin_iata: null, origin_lat: null, origin_lon: null, dest_iata: null, dest_lat: null, dest_lon: null,
+    alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1, sched_dep: clock - 13 * H });
+  await mon.tick();
+  assert.equal(store.getWatch("watch-ghost-0001")!.active, 0, "nie gesehener Flug wird 12 Stunden nach dem Abflug beendet");
+  console.log("OK: Flug auf Vorrat schläft, erinnert 3 Stunden vorher, findet SWR64E und meldet den Start");
+}
