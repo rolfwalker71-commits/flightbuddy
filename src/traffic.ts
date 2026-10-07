@@ -37,3 +37,10 @@ export function toPublic(a: Aircraft): PublicAircraft {
     altitudeFt: a.altitudeFt, groundSpeedKts: a.groundSpeedKts, track: a.track, verticalRateFpm: a.verticalRateFpm,
     squawk: a.squawk, onGround: a.onGround };
 }
+
+/** Welche Quelle gerade antwortet und wie oft die App die Karte aktualisieren soll (OpenSky hat ein Tageskontingent). */
+export function trafficMeta(traffic: object, sourceName: string): { source: "airplanes" | "opensky" | "demo"; refreshSeconds: number } {
+  const used = traffic instanceof FallbackTraffic ? (traffic.lastUsed === "secondary" ? "opensky" : "airplanes")
+    : sourceName === "opensky" ? "opensky" : sourceName === "demo" ? "demo" : "airplanes";
+  return { source: used, refreshSeconds: used === "opensky" ? 30 : 10 };
+}

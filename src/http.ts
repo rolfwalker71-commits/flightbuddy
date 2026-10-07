@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import type { AirplanesLive, TrafficSource } from "./airplanes.ts";
 import type { OpenSky } from "./opensky.ts";
-import { toPublic } from "./traffic.ts";
+import { toPublic, trafficMeta } from "./traffic.ts";
 import { config } from "./config.ts";
 import type { Store } from "./db.ts";
 import type { PushSender } from "./apns.ts";
@@ -130,7 +130,7 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
         } else if (kind === "callsign" && /^[A-Za-z0-9]{2,10}$/.test(arg)) {
           list = await cached(`cs:${arg.toUpperCase()}`, 4_000, async () => (await traffic.byCallsign(arg)));
         } else return json(res, 400, { error: "unbekannte Abfrage" });
-        return json(res, 200, { aircraft: list.map(toPublic) });
+        return json(res, 200, { aircraft: list.map(toPublic), ...trafficMeta(traffic, info.source) });
       }
 
       if (req.method === "GET" && path === "/v1/resolve") {

@@ -6,7 +6,7 @@ import { Store, openDb } from "../src/db.ts";
 import { createApi } from "../src/http.ts";
 import { Monitor } from "../src/monitor.ts";
 import { OpenSky, matchesCallsign, toAircraft } from "../src/opensky.ts";
-import { FallbackTraffic } from "../src/traffic.ts";
+import { FallbackTraffic, trafficMeta } from "../src/traffic.ts";
 import type { Aircraft } from "../src/logic.ts";
 
 // 1) Echte Zeile von SWR64E (LX64) vom 07.10.2026 15:04
@@ -107,7 +107,13 @@ const res = await (await get("/v1/resolve?q=swr64")).json() as any;
 assert.equal(res.aircraft[0].callsign, "SWR64E"); assert.equal(res.aircraft[0].registration, "HB-JNI"); assert.equal(res.partial, false);
 assert.equal((await (await get("/v1/resolve?q=4b191e")).json() as any).aircraft[0].hex, "4b191e");
 assert.equal((await get("/v1/resolve?q=%3Cscript%3E")).status, 400);
-assert.equal((await (await get("/v1/traffic/near?lat=47.4&lon=8.5&radius=50")).json() as any).aircraft.length, 1);
+const near = await (await get("/v1/traffic/near?lat=47.4&lon=8.5&radius=50")).json() as any;
+assert.equal(near.aircraft.length, 1); assert.equal(near.source, "airplanes"); assert.equal(near.refreshSeconds, 10);
+// Antwortet die Ausweichquelle OpenSky, soll die App seltener fragen (Tageskontingent)
+const fbTraffic = new FallbackTraffic(failing, working);
+await fbTraffic.near(47, 8, 50);
+assert.deepEqual(trafficMeta(fbTraffic, "auto"), { source: "opensky", refreshSeconds: 30 });
+assert.deepEqual(trafficMeta(working, "opensky"), { source: "opensky", refreshSeconds: 30 });
 assert.equal((await get("/v1/traffic/near?lat=999&lon=8&radius=50")).status, 400);
 assert.equal((await get("/v1/traffic/hex/zzzzzz")).status, 400);
 const health = await (await get("/v1/health", false)).json() as any;
