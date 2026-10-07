@@ -1,4 +1,5 @@
 import type { TrafficSource } from "./airplanes.ts";
+import type { Track } from "./opensky.ts";
 import type { PushSender } from "./apns.ts";
 import type { Store, Watch } from "./db.ts";
 import { config } from "./config.ts";
@@ -34,6 +35,8 @@ export class Monitor {
     private traffic: TrafficSource,
     private push: PushSender,
     private now: () => number = () => Date.now(),
+    /** Quelle für den bisherigen Flugweg (OpenSky); optional. */
+    private tracks?: { track(hex: string): Promise<Track | null> },
   ) {}
 
   start() {
@@ -141,6 +144,7 @@ export class Monitor {
     // Abflugzeit für die Fortschrittsanzeige: beobachteter Start, sonst aus der geflogenen Strecke geschätzt (einmalig).
     if (!ac.onGround && w.takeoff_at == null) {
       if (w.last_on_ground === 1) w.takeoff_at = now;
+      else if (await this.takeoffFromTrack(w, ac.hex, origin)) { /* tatsächlicher Start aus dem Flugweg gesetzt */ }
       else if (origin && dest) {
         const flownNm = progress(origin, dest, cur) * distanceNm(origin, dest);
         w.takeoff_at = now - (flownNm / Math.max(ac.groundSpeedKts ?? 0, 250)) * 3600_000;
@@ -281,6 +285,27 @@ export class Monitor {
       }
     }
     this.store.save(w);
+  }
+
+  /**
+   * Wurde der Start nicht beobachtet (Flug erst später angelegt), liefert der bisherige Flugweg die tatsächliche Abflugzeit.
+   * Gilt nur, wenn der erste Punkt zum Abflughafen passt und nicht älter als 24 Stunden ist. Einmal pro Flug.
+   */
+  private async takeoffFromTrack(w: Watch, hex: string, origin: { lat: number; lon: number } | null): Promise<boolean> {
+    if (!this.tracks || w.track_checked) return false;
+    w.track_checked = 1;
+    try {
+      const tr = await this.tracks.track(hex);
+      const first = tr?.points[0];
+      if (!tr || !first) return false;
+      const ageMs = this.now() - first.t * 1000;
+      if (ageMs < 0 || ageMs > 24 * 3600_000) return false;
+      if (origin && distanceNm(origin, { lat: first.lat, lon: first.lon }) > 80) return false; // anderer Flug oder Zwischenlandung
+      w.takeoff_at = first.t * 1000;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Erinnerung drei Stunden vor dem geplanten Abflug. */

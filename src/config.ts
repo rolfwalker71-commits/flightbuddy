@@ -10,6 +10,8 @@ export const config = {
   apiToken: env("API_TOKEN"),
   /** "auto" (Standard): airplanes.live, bei Fehlern OpenSky (falls Zugangsdaten gesetzt). Weitere Werte: "airplanes", "opensky", "demo". */
   trafficSource: env("TRAFFIC_SOURCE", "auto").toLowerCase(),
+  /** Nur Demo: simuliert ein Funkloch (kein Empfang), um Anzeigen ohne Empfang zu testen. */
+  demoBlackout: env("DEMO_BLACKOUT") === "1",
   airplanesBase: env("AIRPLANES_BASE_URL", "https://api.airplanes.live/v2"),
   contact: env("AIRPLANES_CONTACT", "rolf@rolfwalker.ch"),
   apns: {

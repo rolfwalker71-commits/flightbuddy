@@ -160,4 +160,39 @@ console.log("OK: HTTP /v1/resolve, /v1/traffic/*, Health, Eingabeprüfung");
   assert.equal(al.lastError, null); assert.ok(al.lastOk != null);
   console.log("OK: airplanes.live nach 403 zehn Minuten überspringen, danach erneut prüfen");
 }
+
+// 11) Flugweg: Auswertung, Ausdünnen, Schnittstelle
+{
+  const trackBody = { icao24: "4b191e", callsign: "SWR64E  ", startTime: 1791374059, endTime: 1791381073,
+    path: Array.from({ length: 400 }, (_, i) => [1791374059 + i * 60, 47.46 - i * 0.01, 8.54 - i * 0.05, 10363, 270, false]) };
+  let trackStatus = 200;
+  const f = (async (url: string | URL | Request) => {
+    if (String(url).includes("openid-connect/token")) return new Response(JSON.stringify({ access_token: "t", expires_in: 1800 }));
+    assert.match(String(url), /\/tracks\/all\?icao24=4b191e&time=0$/);
+    return trackStatus === 404 ? new Response("", { status: 404 }) : new Response(JSON.stringify(trackBody));
+  }) as typeof fetch;
+  const os = new OpenSky("cid", "secret", f, () => 0);
+  const tr = (await os.track("4B191E"))!;
+  assert.equal(tr.callsign, "SWR64E"); assert.equal(tr.points.length, 400); assert.equal(tr.start, 1791374059);
+  const th = (await import("../src/opensky.ts")).thin(tr.points, 150);
+  assert.equal(th.length, 150); assert.equal(th[0]!.t, tr.points[0]!.t); assert.equal(th.at(-1)!.t, tr.points.at(-1)!.t, "erster und letzter Punkt bleiben");
+  trackStatus = 404; assert.equal(await os.track("4b191e"), null, "kein Verlauf bekannt");
+  trackStatus = 200;
+  // über die Schnittstelle
+  const store2 = new Store(openDb(":memory:"));
+  const mon2 = new Monitor(store2, working, sender);
+  const server2 = createApi(store2, mon2, { source: "test", airplanes: null, opensky: os }, sender, working);
+  await new Promise<void>((r) => server2.listen(0, r));
+  const port2 = (server2.address() as { port: number }).port;
+  const get2 = (p: string) => fetch(`http://127.0.0.1:${port2}${p}`, { headers: { Authorization: "Bearer t" } });
+  const j = await (await get2("/v1/track/4b191e")).json() as any;
+  assert.equal(j.available, true); assert.equal(j.points.length, 150); assert.equal(j.callsign, "SWR64E");
+  assert.equal((await get2("/v1/track/zzzzzz")).status, 400);
+  const off = createApi(store2, mon2, { source: "test", airplanes: null, opensky: new OpenSky("", "", f) }, sender, working);
+  await new Promise<void>((r) => off.listen(0, r));
+  const j2 = await (await fetch(`http://127.0.0.1:${(off.address() as { port: number }).port}/v1/track/4b191e`, { headers: { Authorization: "Bearer t" } })).json() as any;
+  assert.equal(j2.available, false); assert.deepEqual(j2.points, []);
+  server2.close(); off.close();
+  console.log("OK: Flugweg (OpenSky): Auswertung, Ausdünnen, Schnittstelle, ohne Zugangsdaten leer");
+}
 process.exit(0);

@@ -1,4 +1,5 @@
 import type { SearchResult, TrafficSource } from "./airplanes.ts";
+import type { Track } from "./opensky.ts";
 import type { Aircraft } from "./logic.ts";
 
 const ZRH = { lat: 47.4647, lon: 8.5492 };
@@ -12,6 +13,9 @@ export const DEMO = {
   squawkUntil: 150,      // … bis hier
   descentFrom: 270,      // Sinkflug
   landedAt: 330,         // gelandet in London
+  /** Optionales Funkloch (DEMO_BLACKOUT=1): das Flugzeug wird in dieser Zeit nicht empfangen, wie über dem Ozean. */
+  blackoutFrom: 150,
+  blackoutUntil: 3_000,
 };
 
 const PLANES: Record<string, { callsign: string; registration: string }> = {
@@ -28,7 +32,7 @@ export class DemoTraffic implements TrafficSource {
   private started = new Map<string, number>();
   private lastQuery = new Map<string, number>();
 
-  constructor(private now: () => number = () => Date.now()) {}
+  constructor(private now: () => number = () => Date.now(), private blackout = false) {}
 
   private at(hex: string): Aircraft | null {
     const meta = PLANES[hex];
@@ -37,6 +41,26 @@ export class DemoTraffic implements TrafficSource {
     if (!this.started.has(hex) || now - (this.lastQuery.get(hex) ?? 0) > 120_000) this.started.set(hex, now);
     this.lastQuery.set(hex, now);
     const t = (now - this.started.get(hex)!) / 1000;
+    if (this.blackout && t >= DEMO.blackoutFrom && t < DEMO.blackoutUntil) return null; // Funkloch
+    return this.position(hex, t);
+  }
+
+  /** Bisheriger Flugweg bis zum Funkloch (oder bis jetzt), alle 10 Sekunden ein Punkt. */
+  async track(hex: string): Promise<Track | null> {
+    const t0 = this.started.get(hex);
+    if (t0 == null) return null;
+    const upTo = Math.min((this.now() - t0) / 1000, this.blackout ? DEMO.blackoutFrom : DEMO.landedAt);
+    const points = [];
+    for (let t = DEMO.groundUntil; t <= upTo; t += 10) {
+      const a = this.position(hex, t);
+      if (a) points.push({ t: Math.floor(t0 / 1000 + t), lat: a.lat, lon: a.lon, altM: (a.altitudeFt ?? 0) / 3.28084, onGround: false });
+    }
+    return points.length ? { hex, callsign: PLANES[hex]?.callsign ?? null, start: points[0]!.t, end: points.at(-1)!.t, points } : null;
+  }
+
+  private position(hex: string, t: number): Aircraft | null {
+    const meta = PLANES[hex];
+    if (!meta) return null;
 
     const f = Math.min(1, Math.max(0, (t - DEMO.groundUntil) / (DEMO.landedAt - DEMO.groundUntil)));
     const lat = ZRH.lat + (LHR.lat - ZRH.lat) * f;

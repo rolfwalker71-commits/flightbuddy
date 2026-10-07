@@ -326,3 +326,39 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   clock += 61_000; await mon.tick(); assert.equal(updates().length, n0 + 2, "und wieder nach 60 s");
   console.log("OK: unter 2 Stunden Restzeit jede Minute ein Update der Live Activity");
 }
+
+// --- Szenario H: Flug erst später angelegt: tatsächliche Abflugzeit aus dem Flugweg ---
+{
+  const nowMs = Date.parse("2026-10-07T17:00:00Z");
+  const plane: Aircraft = { ...base, hex: "4b191e", callsign: "SWR64E", lat: 45.3, lon: -11.8, onGround: false, altitudeFt: 34000,
+    groundSpeedKts: 470, verticalRateFpm: 0, squawk: "1000" };
+  const traffic: TrafficSource = {
+    async byHex() { return [plane]; }, async byCallsign() { return [plane]; }, async byRegistration() { return []; },
+    async near() { return []; }, async searchCallsign() { return { aircraft: [plane], partial: false }; },
+  };
+  let trackCalls = 0;
+  const takeoff = nowMs - 3 * 3600_000 - 6 * 60_000;
+  const tracks = { async track() { trackCalls++; return { hex: "4b191e", callsign: "SWR64E", start: takeoff / 1000, end: nowMs / 1000,
+    points: [{ t: takeoff / 1000, lat: ZRH.lat + 0.01, lon: ZRH.lon + 0.01, altM: 300, onGround: false }, { t: nowMs / 1000, lat: 45.3, lon: -11.8, altM: 10363, onGround: false }] }; } };
+  const st = new Store(openDb(":memory:")); const sd = new DryRunSender();
+  const mon = new Monitor(st, traffic, sd, () => nowMs, tracks);
+  st.upsertDevice("devtoken-trk", "sandbox");
+  st.upsertWatch({ id: "watch-track-0001", device_token: "devtoken-trk", hex: "4b191e", callsign: "SWR64E", reg: null, title: "LX64",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "MIA", dest_lat: 25.79, dest_lon: -80.29, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  await mon.tick();
+  assert.equal(st.getWatch("watch-track-0001")!.takeoff_at, takeoff, "tatsächlicher Start aus dem Flugweg statt Schätzung");
+  assert.equal(trackCalls, 1); await mon.tick(); assert.equal(trackCalls, 1, "der Flugweg wird nur einmal pro Flug abgefragt");
+
+  // Flugweg beginnt weit vom Abflughafen: anderer Flug, daher Schätzung
+  const far = { async track() { return { hex: "4b191e", callsign: null, start: takeoff / 1000, end: nowMs / 1000,
+    points: [{ t: takeoff / 1000, lat: 51.4, lon: -0.4, altM: 300, onGround: false }] }; } };
+  const mon2 = new Monitor(st, traffic, sd, () => nowMs, far);
+  st.upsertWatch({ id: "watch-track-0002", device_token: "devtoken-trk", hex: "4b191e", callsign: "SWR64E", reg: null, title: "LX64",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "MIA", dest_lat: 25.79, dest_lon: -80.29, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  await mon2.tick();
+  const est = st.getWatch("watch-track-0002")!.takeoff_at!;
+  assert.notEqual(est, takeoff, "passt der Anfang nicht zum Abflughafen, gilt der Verlauf nicht"); assert.ok(est < nowMs);
+  console.log("OK: Abflugzeit aus dem Flugweg (nur wenn er zum Abflughafen passt, einmal pro Flug)");
+}

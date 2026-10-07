@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { AirplanesLive, TrafficSource } from "./airplanes.ts";
 import type { OpenSky } from "./opensky.ts";
 import { toPublic, trafficMeta } from "./traffic.ts";
+import { thin } from "./opensky.ts";
 import { localDate } from "./schedule.ts";
 import { config } from "./config.ts";
 import type { Store } from "./db.ts";
@@ -38,7 +39,8 @@ function authorized(req: IncomingMessage): boolean {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
-type TrafficInfo = { source: string; airplanes: AirplanesLive | null; opensky: OpenSky | null; aero?: AeroDataBox; schedule?: ScheduleMonitor };
+type TrafficInfo = { source: string; airplanes: AirplanesLive | null; opensky: OpenSky | null; aero?: AeroDataBox; schedule?: ScheduleMonitor;
+  /** Eigene Flugweg-Quelle (nur Demo). Sonst OpenSky. */ tracks?: { track(hex: string): Promise<import("./opensky.ts").Track | null> } };
 
 function validTz(v: unknown): string | null {
   if (typeof v !== "string" || !v || v.length > 64) return null;
@@ -156,6 +158,17 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
           aero.setKey(config.aerodatabox.key);
           return json(res, 200, { ok: true, configured: aero.configured });
         }
+      }
+
+      // --- Bisheriger Flugweg eines Flugzeugs (für Karte, tatsächliche Abflugzeit und Schätzung bei fehlendem Empfang) ---
+      if (req.method === "GET" && path.startsWith("/v1/track/")) {
+        const hex = path.slice("/v1/track/".length);
+        if (!/^[0-9a-f]{6}$/i.test(hex)) return json(res, 400, { error: "hex" });
+        const trackSource = info.tracks ?? (info.opensky?.configured ? info.opensky : null);
+        if (!trackSource) return json(res, 200, { available: false, points: [] });
+        const tr = await cached(`track:${hex.toLowerCase()}`, info.tracks ? 5_000 : 120_000, () => trackSource.track(hex));
+        return json(res, 200, { available: true, start: tr?.start ?? null, end: tr?.end ?? null, callsign: tr?.callsign ?? null,
+          points: tr ? thin(tr.points).map((p) => ({ t: p.t, lat: p.lat, lon: p.lon, altM: p.altM, onGround: p.onGround })) : [] });
       }
 
       // --- Verkehr für die App (das iPhone hat keinen direkten Zugang zu airplanes.live) ---

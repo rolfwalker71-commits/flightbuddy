@@ -20,7 +20,8 @@ if (opensky && savedId && savedSecret) opensky.setCredentials(savedId, savedSecr
 
 let traffic: TrafficSource;
 let source: string;
-if (choice === "demo") { traffic = new DemoTraffic(); source = "demo"; }
+const demoTraffic = choice === "demo" ? new DemoTraffic(() => Date.now(), config.demoBlackout) : null;
+if (demoTraffic) { traffic = demoTraffic; source = "demo"; }
 else if (choice === "opensky") { traffic = opensky!; source = "opensky"; }
 else if (choice === "airplanes") { traffic = airplanes!; source = "airplanes"; }
 else { traffic = new FallbackTraffic(airplanes!, opensky!); source = "auto (airplanes.live, Ausweichquelle OpenSky)"; }
@@ -29,8 +30,8 @@ const sender = createSender();
 // AeroDataBox (optional): in der App gespeicherter Schlüssel hat Vorrang vor der Umgebungsvariable.
 const aero = new AeroDataBox(store.getSetting("aerodatabox.key") ?? config.aerodatabox.key);
 const schedule = new ScheduleMonitor(store, aero, sender);
-const monitor = new Monitor(store, traffic, sender);
-const server = createApi(store, monitor, { source, airplanes, opensky, aero, schedule }, sender, traffic);
+const monitor = new Monitor(store, traffic, sender, () => Date.now(), demoTraffic ?? opensky ?? undefined); // OpenSky liefert auch den bisherigen Flugweg
+const server = createApi(store, monitor, { source, airplanes, opensky, aero, schedule, tracks: demoTraffic ?? undefined }, sender, traffic);
 console.log(`Datenquelle: ${source}`);
 if (choice === "demo") console.warn("TRAFFIC_SOURCE=demo: simulierter Verkehr (SWR8 / DLH7XK ZRH → LHR), keine echten Flugdaten.");
 if (choice === "opensky" && !opensky!.configured) console.warn("OpenSky gewählt, aber OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET fehlen.");

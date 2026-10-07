@@ -35,11 +35,25 @@ export function toAircraft(row: unknown[]): Aircraft | null {
   };
 }
 
-/** Callsign gleich der Anfrage oder Anfrage plus ein Buchstabe (SWR64 → SWR64E), nie weitere Ziffern (SWR640). */
+/**
+ * Callsign gleich der Anfrage oder Anfrage plus genau ein Buchstabe (SWR64 → SWR64E).
+ * Nicht mehr: «SWR8QE» ist ein anderer Flug als «SWR8» (Swiss vergibt solche alphanumerischen Kennungen eigenständig),
+ * und «SWR640» ist eine andere Flugnummer.
+ */
 export function matchesCallsign(callsign: string | null, query: string): boolean {
   if (!callsign) return false;
   const c = callsign.toUpperCase(), q = query.toUpperCase();
-  return c === q || (c.startsWith(q) && /^[A-Z]+$/.test(c.slice(q.length)) && c.length - q.length <= 2);
+  return c === q || (c.length === q.length + 1 && c.startsWith(q) && /^[A-Z]$/.test(c.slice(q.length)));
+}
+
+export type TrackPoint = { t: number; lat: number; lon: number; altM: number | null; onGround: boolean };
+export type Track = { hex: string; callsign: string | null; start: number; end: number; points: TrackPoint[] };
+
+/** Auf höchstens `max` Punkte ausdünnen, erster und letzter bleiben. */
+export function thin(points: TrackPoint[], max = 150): TrackPoint[] {
+  if (points.length <= max) return points;
+  const step = (points.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => points[Math.round(i * step)]!);
 }
 
 export class OpenSky implements TrafficSource {
@@ -94,7 +108,7 @@ export class OpenSky implements TrafficSource {
     return this.token.value;
   }
 
-  private async get(path: string): Promise<Aircraft[]> {
+  private async fetchJson(path: string): Promise<unknown> {
     if (!this.configured) throw new Error("OpenSky nicht konfiguriert (OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET)");
     if (this.now() < this.blockedUntil) throw new Error("OpenSky: Kontingent erschöpft, Pause");
     const call = async () => this.doFetch(`${API}${path}`, {
@@ -111,11 +125,30 @@ export class OpenSky implements TrafficSource {
       this.lastError = `HTTP 429 (Pause ${wait} s)`;
       throw new Error(this.lastError);
     }
+    if (res.status === 404) { this.lastOk = this.now(); return null; } // keine Daten (zum Beispiel kein Verlauf)
     if (!res.ok) { this.lastError = `HTTP ${res.status}`; throw new Error(this.lastError); }
     this.lastOk = this.now();
     this.lastError = null;
-    const body = (await res.json()) as { states?: unknown[][] | null };
-    return (body.states ?? []).map(toAircraft).filter((a): a is Aircraft => a != null);
+    return res.json();
+  }
+
+  private async get(path: string): Promise<Aircraft[]> {
+    const body = (await this.fetchJson(path)) as { states?: unknown[][] | null } | null;
+    return (body?.states ?? []).map(toAircraft).filter((a): a is Aircraft => a != null);
+  }
+
+  /** Bisheriger Flugweg des laufenden Flugs (OpenSky «experimentell», 4 Credits aus eigenem Kontingent). null: kein Verlauf bekannt. */
+  async track(hex: string): Promise<Track | null> {
+    const body = (await this.fetchJson(`/tracks/all?icao24=${encodeURIComponent(hex.toLowerCase())}&time=0`)) as
+      { callsign?: string | null; startTime?: number; endTime?: number; path?: unknown[][] } | null;
+    const path = body?.path ?? [];
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const points = path.flatMap((p): TrackPoint[] => {
+      const t = num(p[0]), lat = num(p[1]), lon = num(p[2]);
+      return t != null && lat != null && lon != null ? [{ t, lat, lon, altM: num(p[3]), onGround: p[5] === true }] : [];
+    });
+    if (!points.length) return null;
+    return { hex: hex.toLowerCase(), callsign: body?.callsign?.trim() || null, start: body?.startTime ?? points[0]!.t, end: body?.endTime ?? points.at(-1)!.t, points };
   }
 
   async byHex(hexes: string[]) {
