@@ -7,8 +7,9 @@ import { Monitor } from "./monitor.ts";
 
 const store = new Store(openDb());
 const airplanes = new AirplanesLive();
-const monitor = new Monitor(store, airplanes, createSender());
-const server = createApi(store, monitor, airplanes);
+const sender = createSender();
+const monitor = new Monitor(store, airplanes, sender);
+const server = createApi(store, monitor, airplanes, sender);
 
 if (!config.apiToken) console.warn("API_TOKEN ist nicht gesetzt: alle Endpunkte ausser /v1/health werden abgelehnt.");
 server.listen(config.port, () => console.log(`FlightBuddy-Server auf Port ${config.port}`));

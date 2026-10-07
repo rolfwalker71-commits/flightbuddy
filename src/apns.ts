@@ -15,13 +15,17 @@ export type PushRequest = {
 
 export type PushResult = { ok: boolean; status: number; reason?: string; gone?: boolean };
 
+export type SenderInfo = { mode: "ready" | "dry-run"; reason?: string };
+
 export interface PushSender {
+  readonly info: SenderInfo;
   send(req: PushRequest): Promise<PushResult>;
 }
 
 const b64url = (b: Buffer | string) => Buffer.from(b).toString("base64url");
 
 export class ApnsSender implements PushSender {
+  readonly info: SenderInfo = { mode: "ready" };
   private sessions = new Map<string, http2.ClientHttp2Session>();
   private jwt: { token: string; at: number } | null = null;
   private readonly key: ReturnType<typeof createPrivateKey>;
@@ -83,6 +87,7 @@ export class ApnsSender implements PushSender {
 /** Ohne APNs-Schlüssel: nichts senden, nur protokollieren. */
 export class DryRunSender implements PushSender {
   readonly sent: PushRequest[] = [];
+  constructor(readonly info: SenderInfo = { mode: "dry-run" }) {}
   async send(req: PushRequest): Promise<PushResult> {
     this.sent.push(req);
     console.log(`[dry-run apns] ${req.kind} → …${req.deviceToken.slice(-6)} ${JSON.stringify(req.payload).slice(0, 220)}`);
@@ -94,14 +99,15 @@ export function createSender(): PushSender {
   const key = loadApnsKey();
   if (key.pem === null) {
     console.warn(`APNs-Schlüssel nicht geladen: ${key.reason}. Dry-Run, es werden keine Pushes gesendet.`);
-    return new DryRunSender();
+    return new DryRunSender({ mode: "dry-run", reason: key.reason });
   }
   try {
     const sender = new ApnsSender(key.pem);
     console.log(`APNs bereit: Key ${config.apns.keyId}, Team ${config.apns.teamId}, Topic ${config.apns.topic}`);
     return sender;
   } catch (e) {
-    console.warn(`APNs-Schlüssel ungültig (${e instanceof Error ? e.message : e}). Dry-Run, es werden keine Pushes gesendet.`);
-    return new DryRunSender();
+    const reason = `Schlüssel ungültig (${e instanceof Error ? e.message : e})`;
+    console.warn(`APNs: ${reason}. Dry-Run, es werden keine Pushes gesendet.`);
+    return new DryRunSender({ mode: "dry-run", reason });
   }
 }

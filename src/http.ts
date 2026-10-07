@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { AirplanesLive } from "./airplanes.ts";
 import { config } from "./config.ts";
 import type { Store } from "./db.ts";
+import type { PushSender } from "./apns.ts";
 import type { Monitor } from "./monitor.ts";
 
 function json(res: import("node:http").ServerResponse, status: number, body: unknown) {
@@ -33,7 +34,7 @@ function authorized(req: IncomingMessage): boolean {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
-export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLive | null): Server {
+export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLive | null, push: PushSender): Server {
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://x");
@@ -45,6 +46,8 @@ export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLi
           apiTokenConfigured: !!config.apiToken,
           lastTick: monitor.lastTick,
           monitorError: monitor.lastError,
+          apns: push.info,
+          watches: store.activeWatches().length,
           airplanes: airplanes ? { lastOk: airplanes.lastOk, lastError: airplanes.lastError } : null,
         });
       }
@@ -56,6 +59,23 @@ export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLi
         if (!token || !/^[0-9a-f]+$/i.test(token)) return json(res, 400, { error: "deviceToken" });
         store.upsertDevice(token, b.environment === "sandbox" ? "sandbox" : "production");
         return json(res, 200, { ok: true });
+      }
+
+      if (req.method === "POST" && path === "/v1/test-push") {
+        const b = await readJson(req);
+        const token = str(b.deviceToken, 200);
+        if (!token || !/^[0-9a-f]+$/i.test(token)) return json(res, 400, { error: "deviceToken" });
+        const env = b.environment === "sandbox" ? "sandbox" : b.environment === "production" ? "production" : (store.getDevice(token)?.env ?? "production");
+        const result = await push.send({
+          kind: "alert", deviceToken: token, env, collapseId: "test-push",
+          payload: {
+            aps: { alert: { title: str(b.title, 60) ?? "FlightBuddy Test", body: str(b.body, 150) ?? "Push-Verbindung funktioniert." },
+                   sound: "default", "mutable-content": 1 },
+            kind: "test", airlineIATA: str(b.airlineIATA, 3), airlineName: str(b.airlineName, 80),
+          },
+        });
+        // Apple-Antwort 1:1 durchreichen, damit Fehler wie BadDeviceToken / TopicDisallowed sichtbar sind.
+        return json(res, 200, { dryRun: push.info.mode === "dry-run", environment: env, ...result });
       }
 
       const m = path.match(/^\/v1\/watches\/([A-Za-z0-9-]{8,64})(\/live-activity)?$/);
