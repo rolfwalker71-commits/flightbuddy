@@ -1,90 +1,17 @@
+# FlightBuddy-Server (iOS-Backend): airplanes.live → Ereignisse → APNs.
+# Image kommt aus GHCR (wie bisher). Lokal bauen: docker compose -f docker-compose.yml -f docker-compose.build.yml build
+# Die .p8-Datei wird nur lesend eingebunden und gehört weder ins Image noch ins Repo.
 services:
-  postgres:
-    image: postgis/postgis:16-3.5
+  flightbuddy-server:
+    image: ghcr.io/rolfwalker71-commits/flightbuddy-server:${TAG:-latest}
+    container_name: flightbuddy-server
+    restart: unless-stopped
+    env_file: .env
     environment:
-      POSTGRES_USER: flightbuddy
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flightbuddy}
-      POSTGRES_DB: flightbuddy
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flightbuddy -d flightbuddy"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "60", "1"]
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-    restart: unless-stopped
-
-  app:
-    image: ghcr.io/rolfwalker71-commits/flightbuddy:${TAG:-latest}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      DB_PATH: /data/flightbuddy.sqlite
+      APNS_KEY_PATH: /run/secrets/apns.p8
     ports:
-      - "${APP_PORT:-3377}:3377"
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      DATABASE_URL: postgresql://flightbuddy:${POSTGRES_PASSWORD:-flightbuddy}@postgres:5432/flightbuddy?schema=public
-      REDIS_URL: redis://redis:6379
-      PORT: "3377"
-      APP_URL: ${APP_URL:-http://localhost:3377}
-      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
-      AUTH_TRUST_HOST: "true"
-      OPENSKY_USERNAME: ${OPENSKY_USERNAME:-}
-      OPENSKY_PASSWORD: ${OPENSKY_PASSWORD:-}
-      AERODATABOX_KEY: ${AERODATABOX_KEY:-}
-      AERODATABOX_BASE_URL: ${AERODATABOX_BASE_URL:-https://prod.api.market/api/v1/aedbx/aerodatabox}
-      AERODATABOX_HOST: ${AERODATABOX_HOST:-}
-      FR24_API_TOKEN: ${FR24_API_TOKEN:-}
-      FR24_ENABLED: ${FR24_ENABLED:-}
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
-    restart: unless-stopped
-
-  worker:
-    image: ghcr.io/rolfwalker71-commits/flightbuddy:${TAG:-latest}
-    command: ["worker"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      DATABASE_URL: postgresql://flightbuddy:${POSTGRES_PASSWORD:-flightbuddy}@postgres:5432/flightbuddy?schema=public
-      REDIS_URL: redis://redis:6379
-      APP_URL: ${APP_URL:-http://localhost:3377}
-      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
-      OPENSKY_USERNAME: ${OPENSKY_USERNAME:-}
-      OPENSKY_PASSWORD: ${OPENSKY_PASSWORD:-}
-      AERODATABOX_KEY: ${AERODATABOX_KEY:-}
-      AERODATABOX_BASE_URL: ${AERODATABOX_BASE_URL:-https://prod.api.market/api/v1/aedbx/aerodatabox}
-      AERODATABOX_HOST: ${AERODATABOX_HOST:-}
-      FR24_API_TOKEN: ${FR24_API_TOKEN:-}
-      FR24_ENABLED: ${FR24_ENABLED:-}
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
-    restart: unless-stopped
-
-volumes:
-  pgdata:
-  redisdata:
+      - "127.0.0.1:${PORT:-8787}:8787"   # nur lokal; von aussen über den Reverse-Proxy mit TLS
+    volumes:
+      - ./data:/data
+      - ${APNS_KEY_HOST_PATH:?Pfad der AuthKey_XXXX.p8 auf dem Host setzen}:/run/secrets/apns.p8:ro

@@ -1,10 +1,12 @@
 node_modules
-.next
+data
+secrets
 .git
-.gitignore
-mockups
-*.md
+.github
 .env
 .env.*
 !.env.example
-agent-transcripts
+*.p8
+*.pem
+test
+README.md

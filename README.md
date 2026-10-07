@@ -1,70 +1,47 @@
-# FlightBuddy
+# FlightBuddy-Server
 
-Self-hosted, multi-user flight tracker inspired by Flighty. Dark PWA for desktop and mobile.
-
-**Stack:** Next.js App Router · Tailwind · Auth.js · Prisma · PostgreSQL/PostGIS · Redis/BullMQ · MapLibre · Web Push · GHCR
-
-## Run locally
+Schlanker Begleiter der iOS-App: fragt **ausschliesslich airplanes.live** ab, erkennt Ereignisse
+(Start, Anflug, Landung, Notfall-Squawk) und sendet sie per **APNs** als Push und als Live-Activity-Update.
+Keine Datenbank ausser SQLite, keine Laufzeit-Abhängigkeiten (nur Node 22.13+).
 
 ```bash
-cp .env.example .env
-# set AUTH_SECRET — openssl rand -base64 32
-docker compose up -d postgres redis
+cp .env.example .env      # API_TOKEN setzen: openssl rand -hex 24
 npm install
-npx prisma migrate deploy
-npm run db:seed
-npm run dev
+npm test                  # Simulation: Boden → Start → Squawk → Anflug → Landung
+set -a; . ./.env; set +a
+npm start
 ```
 
-In a second terminal:
+## APNs einrichten (einmalig, im Apple Developer Portal)
+1. Keys → «+» → *Apple Push Notifications service (APNs)* → Schlüssel laden (`AuthKey_XXXX.p8`, nur einmal herunterladbar).
+2. `.p8` nach `secrets/` legen, in `.env` `APNS_KEY_PATH` und `APNS_KEY_ID` eintragen.
+3. Ohne diese Werte läuft der Server im Dry-Run und loggt die Pushes nur.
+
+## API (alle ausser /v1/health mit `Authorization: Bearer <API_TOKEN>`)
+| Methode | Pfad | Zweck |
+|---|---|---|
+| GET | `/v1/health` | Status, letzter airplanes.live-Zugriff |
+| PUT | `/v1/devices` | `{deviceToken, environment: "sandbox"\|"production"}` |
+| PUT | `/v1/watches/{uuid}` | Flug beobachten: `{deviceToken, title, hex?\|callsign?\|registration?, airlineIATA?, airlineName?, origin?:{iata,lat,lon}, destination?:{…}, alerts?:{squawk,takeoff,landing,approach}}` |
+| DELETE | `/v1/watches/{uuid}` | Beobachtung beenden |
+| PUT/DELETE | `/v1/watches/{uuid}/live-activity` | `{pushToken}` der Live Activity |
+
+Live-Activity-Inhalt (`content-state`): `phase, phaseLabel, altitudeFt, speedKts, progress, etaTimestamp, emergency, distanceNm`.
+Push-Inhalt enthält `airlineIATA`; die App lädt das Logo selbst nach (Notification Service Extension), der Server hostet keine Logos.
+
+## airplanes.live
+Der Zugriff muss vom Betreiber freigeschaltet werden (contact@airplanes.live), bis dahin liefert `/v1/health`
+`lastError: "HTTP 403 …"`. Anfragen: max. 1 pro 1,1 s, Backoff bei 429, User-Agent mit Kontaktadresse.
+
+## Betrieb auf dem Server
+Der APNs-Schlüssel (`AuthKey_<KEYID>.p8`) bleibt auf dem Host und wird nur lesend eingebunden.
+In `.env` stehen `API_TOKEN`, `APNS_KEY_ID` (aus dem Dateinamen), `APNS_TEAM_ID`, `APNS_TOPIC`, und für Compose
+`APNS_KEY_HOST_PATH=/pfad/zur/AuthKey_<KEYID>.p8`. Die Datei `.env` ersetzt die bisherige `.env` der PWA vollständig.
 
 ```bash
-npm run dev:worker
+docker compose pull && docker compose up -d     # Image aus GHCR (ghcr.io/rolfwalker71-commits/flightbuddy-server)
+curl -s localhost:8787/v1/health
+# lokal bauen statt ziehen:
+# docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
-
-Open http://localhost:3377 and create the first account — that user becomes **admin**.
-
-## Docker
-
-Production compose uses only the GHCR image (no `build:` in `docker-compose.yml`).
-
-```bash
-# local image
-docker compose -f docker-compose.yml -f docker-compose.build.yml build
-
-export AUTH_SECRET=$(openssl rand -base64 32)
-docker compose up -d
-```
-
-On a remote host after GitHub Actions has published `ghcr.io/rolfwalker71-commits/flightbuddy:latest`:
-
-```bash
-docker compose pull && docker compose up -d
-```
-
-Do not run `docker compose up --build` on the server.
-
-## API keys
-
-| Service | Required? | Where to register | Env vars |
-|---|---|---|---|
-| **OpenSky Network** | Recommended | [Create an OpenSky account](https://opensky-network.org/index.php?option=com_users&view=registration) | `OPENSKY_USERNAME`, `OPENSKY_PASSWORD` |
-| **AeroDataBox (API.Market)** | Optional | [AeroDataBox on API.Market](https://api.market/store/aedbx/aerodatabox) | `AERODATABOX_KEY`, `AERODATABOX_BASE_URL` |
-| **Web Push VAPID** | Automatic | Keys are generated on first boot and stored in `AppSetting`. Optional env override. | — |
-| **OurAirports / OpenFlights** | No signup | Imported from Settings (admin) | — |
-| **Carto / OSM tiles** | No signup | Used client-side for the dark map | — |
-
-Anonymous OpenSky works but is heavily rate-limited. A free OpenSky login is the most important registration.
-
-## Polling
-
-Adaptive poll cycle. OpenSky is never queried faster than `OPENSKY_MIN_INTERVAL_MS` (default 90s); if the cycle is faster (10s/30s climb/approach), AeroDataBox location is used while OpenSky is in cooldown. Never faster than the AeroDataBox 1.2s throttle.
-
-- Far from departure: every 8 hours
-- Pre-flight window (default 2h): every 15 minutes; last 45 min before dep: every 3 minutes
-- En route climb (first 10 min after actual/estimated/scheduled dep, or very low progress if no dep time): every 10 seconds
-- En route climb (first 10–20 min after dep, or low progress if no dep time): every 30 seconds
-- En route approach (last 10 min to ETA, or progress ≥ ~90% if no ETA): every 10 seconds
-- En route approach (last 10–20 min to ETA, or progress ≥ ~80% if no ETA): every 30 seconds
-- Cruise: every 3 minutes
-- Landed / cancelled: polling stops
+Die App muss den Server über HTTPS erreichen (Reverse-Proxy mit TLS davor). Port 8787 ist nur an localhost gebunden.

@@ -1,48 +1,16 @@
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+node_modules
+data
+secrets
+dist
+coverage
 
-# testing
-/coverage
-
-# next
-/.next/
-/out/
-
-# production
-/build
-/dist
-
-# env
+# Geheimnisse: nie committen (Repo ist öffentlich)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 !.env.example
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# prisma
-/prisma/dev.db
-/prisma/dev.db-journal
-
-# local user-space Postgres / Redis (WSL without Docker)
-.data/
-
-# misc
-.DS_Store
+*.p8
 *.pem
-.vercel
-next-env.d.ts
+
+npm-debug.log*
+.DS_Store
 tsconfig.tsbuildinfo
