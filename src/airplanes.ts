@@ -13,6 +13,9 @@ export interface TrafficSource {
   searchCallsign(query: string): Promise<SearchResult>;
 }
 
+/** So lange wird airplanes.live nach einem 403 nicht mehr angefragt. */
+export const DENIED_PAUSE_MS = 10 * 60_000;
+
 export const SUFFIXES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 type Raw = {
@@ -44,15 +47,21 @@ export class AirplanesLive implements TrafficSource {
   lastError: string | null = null;
   private last = 0;
   private blockedUntil = 0;
+  /** Nach einem 403 (Zugriff nicht freigeschaltet) wird die Quelle eine Weile übersprungen. */
+  private deniedUntil = 0;
   private backoff = 5_000;
 
-  /** Eine Anfrage pro 1,1 s; nach HTTP 429 wird exponentiell pausiert. */
+  constructor(private doFetch: typeof fetch = fetch, private now: () => number = () => Date.now()) {}
+
+  /** Eine Anfrage pro 1,1 s; nach HTTP 429 wird exponentiell pausiert, nach 403 zehn Minuten ganz ausgesetzt. */
   private async get(path: string): Promise<Aircraft[]> {
-    if (Date.now() < this.blockedUntil) throw new Error("rate limited (backoff)");
-    const wait = 1_100 - (Date.now() - this.last);
+    // Gesperrt: sofort scheitern, ohne Wartezeit und ohne Anfrage, damit die Ausweichquelle gleich übernimmt.
+    if (this.now() < this.deniedUntil) throw new Error(this.lastError ?? "HTTP 403 (Zugriff nicht freigeschaltet)");
+    if (this.now() < this.blockedUntil) throw new Error("rate limited (backoff)");
+    const wait = 1_100 - (this.now() - this.last);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    this.last = Date.now();
-    const res = await fetch(`${config.airplanesBase}/${path}`, {
+    this.last = this.now();
+    const res = await this.doFetch(`${config.airplanesBase}/${path}`, {
       headers: {
         "User-Agent": `FlightBuddy-Server/1.0 (non-commercial personal flight tracker; contact: ${config.contact})`,
         Accept: "application/json",
@@ -60,17 +69,19 @@ export class AirplanesLive implements TrafficSource {
       signal: AbortSignal.timeout(10_000),
     });
     if (res.status === 429) {
-      this.blockedUntil = Date.now() + this.backoff;
+      this.blockedUntil = this.now() + this.backoff;
       this.backoff = Math.min(this.backoff * 2, 120_000);
       this.lastError = "HTTP 429";
       throw new Error("HTTP 429");
     }
     if (!res.ok) {
       this.lastError = `HTTP ${res.status}${res.status === 403 ? " (Zugriff nicht freigeschaltet: contact@airplanes.live)" : ""}`;
+      if (res.status === 403) this.deniedUntil = this.now() + DENIED_PAUSE_MS;
       throw new Error(this.lastError);
     }
     this.backoff = 5_000;
-    this.lastOk = Date.now();
+    this.deniedUntil = 0;
+    this.lastOk = this.now();
     this.lastError = null;
     const body = (await res.json()) as { ac?: Raw[] };
     return (body.ac ?? []).map(toAircraft).filter((a): a is Aircraft => a != null);

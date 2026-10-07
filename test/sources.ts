@@ -1,6 +1,6 @@
 // Prüft die Datenquellen ohne Netzwerk: OpenSky (Umrechnung, Token, Limits), Suffix-Suche, Ausweichquelle, HTTP-Schnittstellen.
 import assert from "node:assert/strict";
-import type { TrafficSource } from "../src/airplanes.ts";
+import { AirplanesLive, DENIED_PAUSE_MS, type TrafficSource } from "../src/airplanes.ts";
 import { DryRunSender } from "../src/apns.ts";
 import { Store, openDb } from "../src/db.ts";
 import { createApi } from "../src/http.ts";
@@ -141,4 +141,23 @@ assert.equal((await fetch(`http://127.0.0.1:${port}/v1/settings/opensky`, { meth
 server.close();
 console.log("OK: OpenSky-Zugangsdaten per App: prüfen, speichern, nie zurückgeben, löschen");
 console.log("OK: HTTP /v1/resolve, /v1/traffic/*, Health, Eingabeprüfung");
+
+// 10) airplanes.live: nach einem 403 zehn Minuten überspringen, danach wieder einmal probieren
+{
+  let t = 5_000_000, hits = 0, status = 403;
+  const fetch403 = (async () => { hits++; return new Response(status === 200 ? JSON.stringify({ ac: [{ hex: "4081bb", flight: "BAW629 ", lat: 46.6, lon: 9.5, alt_baro: 36000, gs: 415 }] }) : "", { status }); }) as typeof fetch;
+  const al = new AirplanesLive(fetch403, () => t);
+  await assert.rejects(() => al.byHex(["4081bb"]), /403/); assert.equal(hits, 1);
+  const started = Date.now();
+  await assert.rejects(() => al.byCallsign("BAW629"), /403/);
+  await assert.rejects(() => al.searchCallsign("BAW629"), /403/);
+  assert.equal(hits, 1, "während der Pause keine weitere Anfrage");
+  assert.ok(Date.now() - started < 300, "ohne Wartezeit scheitern, damit OpenSky sofort übernimmt");
+  t += DENIED_PAUSE_MS - 1000; await assert.rejects(() => al.byHex(["4081bb"]), /403/); assert.equal(hits, 1);
+  t += 2000; await assert.rejects(() => al.byHex(["4081bb"]), /403/); assert.equal(hits, 2, "nach der Pause wieder eine Probe");
+  t += DENIED_PAUSE_MS + 1; status = 200;
+  assert.equal((await al.byHex(["4081bb"]))[0]?.hex, "4081bb", "Zugang offen: wieder normal");
+  assert.equal(al.lastError, null); assert.ok(al.lastOk != null);
+  console.log("OK: airplanes.live nach 403 zehn Minuten überspringen, danach erneut prüfen");
+}
 process.exit(0);
