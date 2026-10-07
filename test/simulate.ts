@@ -197,6 +197,19 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   clock = dep + 10 * 60_000; await mon.tick();
   assert.ok(alerts().some((a) => a.title === "LX64 ist gestartet"));
 
+  // Erinnerung in der Ortszeit des Abflughafens (Lissabon 08:40, nicht Zürcher Zeit 09:40)
+  {
+    const st = new Store(openDb(":memory:")); const sd = new DryRunSender(); let c2 = Date.parse("2026-10-30T00:00:00Z");
+    const m2 = new Monitor(st, traffic, sd, () => c2);
+    st.upsertDevice("devtoken-lis", "sandbox");
+    st.upsertWatch({ id: "watch-lis-0001", device_token: "devtoken-lis", hex: null, callsign: "TAP930", reg: null, title: "TP930", airline_iata: "TP", airline_name: "TAP",
+      origin_iata: "LIS", origin_lat: 38.78, origin_lon: -9.14, dest_iata: "ZRH", dest_lat: ZRH.lat, dest_lon: ZRH.lon,
+      alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1, sched_dep: Date.parse("2026-10-30T08:40:00Z"), origin_tz: "Europe/Lisbon" });
+    c2 = Date.parse("2026-10-30T08:40:00Z") - 3 * H + 1000; await m2.tick();
+    const t = sd.sent.filter((p) => p.kind === "alert").map((p) => (p.payload.aps as any).alert as { title: string; body: string });
+    assert.equal(t.length, 1); assert.match(t[0]!.body, /LIS → ZRH · 08:40 Uhr/, "Ortszeit des Abflughafens erwartet");
+  }
+
   // Nie gesehener Flug wird nach dem Abflug beendet
   store.upsertWatch({ id: "watch-ghost-0001", device_token: "devtoken-plan", hex: null, callsign: "XXX1", reg: null, title: "XX1",
     airline_iata: null, airline_name: null, origin_iata: null, origin_lat: null, origin_lon: null, dest_iata: null, dest_lat: null, dest_lon: null,

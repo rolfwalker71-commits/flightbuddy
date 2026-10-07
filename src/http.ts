@@ -193,6 +193,7 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
             origin_iata: str(o.iata, 3), origin_lat: num(o.lat), origin_lon: num(o.lon),
             dest_iata: str(d.iata, 3), dest_lat: num(d.lat), dest_lon: num(d.lon),
             sched_dep: (() => { const t = num(b.scheduledDeparture); return t != null && t > 1e9 && t < 4e9 ? Math.round(t * 1000) : null; })(),
+            origin_tz: (() => { const z = str(o.tz, 64); if (!z) return null; try { new Intl.DateTimeFormat("de-CH", { timeZone: z }); return z; } catch { return null; } })(),
             alert_squawk: flag(a.squawk), alert_takeoff: flag(a.takeoff), alert_landing: flag(a.landing), alert_approach: flag(a.approach),
           });
           return json(res, 200, { ok: true });

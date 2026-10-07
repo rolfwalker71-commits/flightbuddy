@@ -36,6 +36,7 @@ export type Watch = {
   start_sent: number;
   takeoff_at: number | null;
   sched_dep: number | null;
+  origin_tz: string | null;
   reminder_sent: number;
   created_at: number;
 };
@@ -75,6 +76,7 @@ export function openDb(path = config.dbPath): DatabaseSync {
     "ALTER TABLE watches ADD COLUMN start_sent INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE watches ADD COLUMN takeoff_at INTEGER",
     "ALTER TABLE watches ADD COLUMN sched_dep INTEGER",
+    "ALTER TABLE watches ADD COLUMN origin_tz TEXT",
     "ALTER TABLE watches ADD COLUMN reminder_sent INTEGER NOT NULL DEFAULT 0",
   ]) {
     try { db.exec(sql); } catch { /* Spalte existiert bereits */ }
@@ -116,24 +118,24 @@ export class Store {
 
   upsertWatch(w: Pick<Watch, "id" | "device_token" | "hex" | "callsign" | "reg" | "title" | "airline_iata" | "airline_name"
     | "origin_iata" | "origin_lat" | "origin_lon" | "dest_iata" | "dest_lat" | "dest_lon"
-    | "alert_squawk" | "alert_takeoff" | "alert_landing" | "alert_approach"> & { sched_dep?: number | null }) {
+    | "alert_squawk" | "alert_takeoff" | "alert_landing" | "alert_approach"> & { sched_dep?: number | null; origin_tz?: string | null }) {
     this.db
       .prepare(
         `INSERT INTO watches(id, device_token, hex, callsign, reg, title, airline_iata, airline_name,
            origin_iata, origin_lat, origin_lon, dest_iata, dest_lat, dest_lon,
-           alert_squawk, alert_takeoff, alert_landing, alert_approach, created_at, sched_dep)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           alert_squawk, alert_takeoff, alert_landing, alert_approach, created_at, sched_dep, origin_tz)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET device_token=excluded.device_token, hex=COALESCE(excluded.hex, watches.hex),
            callsign=excluded.callsign, reg=excluded.reg, title=excluded.title,
            airline_iata=excluded.airline_iata, airline_name=excluded.airline_name,
            origin_iata=excluded.origin_iata, origin_lat=excluded.origin_lat, origin_lon=excluded.origin_lon,
            dest_iata=excluded.dest_iata, dest_lat=excluded.dest_lat, dest_lon=excluded.dest_lon,
            alert_squawk=excluded.alert_squawk, alert_takeoff=excluded.alert_takeoff,
-           alert_landing=excluded.alert_landing, alert_approach=excluded.alert_approach, sched_dep=excluded.sched_dep, active=1`,
+           alert_landing=excluded.alert_landing, alert_approach=excluded.alert_approach, sched_dep=excluded.sched_dep, origin_tz=excluded.origin_tz, active=1`,
       )
       .run(w.id, w.device_token, w.hex, w.callsign, w.reg, w.title, w.airline_iata, w.airline_name,
         w.origin_iata, w.origin_lat, w.origin_lon, w.dest_iata, w.dest_lat, w.dest_lon,
-        w.alert_squawk, w.alert_takeoff, w.alert_landing, w.alert_approach, Date.now(), w.sched_dep ?? null);
+        w.alert_squawk, w.alert_takeoff, w.alert_landing, w.alert_approach, Date.now(), w.sched_dep ?? null, w.origin_tz ?? null);
   }
 
   deleteWatch(id: string) {

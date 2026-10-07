@@ -242,7 +242,7 @@ export class Monitor {
 
   /** Erinnerung drei Stunden vor dem geplanten Abflug. */
   private async reminder(w: Watch) {
-    const at = new Date(w.sched_dep!).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: config.displayTz });
+    const at = new Date(w.sched_dep!).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: w.origin_tz ?? config.displayTz });
     const route = w.origin_iata && w.dest_iata ? `${w.origin_iata} → ${w.dest_iata} · ` : "";
     await this.alert(w, { title: `${w.title} hebt in 3 Std. ab`, body: `${route}${at} Uhr`, level: "active", kind: "reminder" });
   }
