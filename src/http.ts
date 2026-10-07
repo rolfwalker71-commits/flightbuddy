@@ -58,6 +58,14 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
     return data;
   };
   return createServer(async (req, res) => {
+    // Eine Protokollzeile pro Anfrage der App (ohne Token): so lässt sich sehen, ob und was die App abfragt.
+    const started = Date.now();
+    res.on("finish", () => {
+      const u = new URL(req.url ?? "/", "http://x");
+      if (u.pathname === "/v1/health") return;
+      const q = u.pathname.startsWith("/v1/resolve") || u.pathname.startsWith("/v1/traffic") ? u.search : "";
+      console.log(`${new Date().toISOString()} ${req.method} ${u.pathname}${q} → ${res.statusCode} ${Date.now() - started} ms`);
+    });
     try {
       const url = new URL(req.url ?? "/", "http://x");
       const path = url.pathname;
