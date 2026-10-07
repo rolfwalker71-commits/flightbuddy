@@ -127,9 +127,53 @@ export class Monitor {
     }
     w.last_on_ground = ac.onGround ? 1 : 0;
 
+    await this.startActivity(w, ac, phase, toDest, origin, dest, eta);
     await this.updateActivity(w, ac, phase, toDest, origin, dest, eta, landedNow);
     if (w.landed_sent) w.active = 0; // Landungsmeldung und Ende der Live Activity sind raus: nicht mehr abfragen
     this.store.save(w);
+  }
+
+  private buildState(
+    ac: Aircraft, phase: ReturnType<typeof phaseOf>, toDest: number | null,
+    origin: { lat: number; lon: number } | null, dest: { lat: number; lon: number } | null, eta: number | null,
+  ) {
+    return {
+      phase, phaseLabel: PHASE_LABEL[phase],
+      altitudeFt: ac.altitudeFt, speedKts: ac.groundSpeedKts,
+      progress: origin && dest ? progress(origin, dest, { lat: ac.lat, lon: ac.lon }) : null,
+      etaTimestamp: eta != null ? Math.floor(Date.now() / 1000 + eta) : null, // Sekunden seit 1970
+      emergency: ac.squawk != null && EMERGENCY.has(ac.squawk),
+      distanceNm: toDest,
+    };
+  }
+
+  /**
+   * Startet die Live Activity per Push, wenn die App sie nicht selbst gestartet hat (z. B. App geschlossen).
+   * Voraussetzung: Das Gerät hat ein Push-to-Start-Token gemeldet und es gibt noch keine laufende Activity.
+   */
+  private async startActivity(
+    w: Watch, ac: Aircraft, phase: ReturnType<typeof phaseOf>, toDest: number | null,
+    origin: { lat: number; lon: number } | null, dest: { lat: number; lon: number } | null, eta: number | null,
+  ) {
+    if (w.activity_token || w.start_sent || w.landed_sent || ac.onGround) return;
+    const device = this.store.getDevice(w.device_token);
+    if (!device?.start_token) return;
+    const res = await this.push.send({
+      kind: "liveactivity", deviceToken: device.start_token, env: device.env, priority: 10,
+      payload: {
+        aps: {
+          timestamp: Math.floor(Date.now() / 1000), event: "start",
+          "content-state": this.buildState(ac, phase, toDest, origin, dest, eta),
+          "attributes-type": "FlightActivityAttributes",
+          attributes: {
+            watchId: w.id, title: w.title, originIATA: w.origin_iata, destinationIATA: w.dest_iata,
+            airlineIATA: w.airline_iata, airlineName: w.airline_name,
+          },
+        },
+      },
+    });
+    if (res.ok) w.start_sent = 1;
+    else if (res.gone) this.store.setStartToken(device.token, null); // Token ungültig: nicht weiter versuchen
   }
 
   private async updateActivity(
@@ -139,14 +183,7 @@ export class Monitor {
   ) {
     if (!w.activity_token) return;
     const now = Date.now();
-    const state = {
-      phase, phaseLabel: PHASE_LABEL[phase],
-      altitudeFt: ac.altitudeFt, speedKts: ac.groundSpeedKts,
-      progress: origin && dest ? progress(origin, dest, { lat: ac.lat, lon: ac.lon }) : null,
-      etaTimestamp: eta != null ? Math.floor(now / 1000 + eta) : null, // Sekunden seit 1970
-      emergency: ac.squawk != null && EMERGENCY.has(ac.squawk),
-      distanceNm: toDest,
-    };
+    const state = this.buildState(ac, phase, toDest, origin, dest, eta);
     const sig = `${state.phase}|${Math.round((state.altitudeFt ?? 0) / 500)}|${Math.round((state.speedKts ?? 0) / 10)}|${Math.round((state.progress ?? 0) * 100)}|${state.emergency}`;
     if (!ending && (sig === w.last_activity_sig || now - w.last_activity_push < ACTIVITY_MIN_INTERVAL_MS)) return;
 

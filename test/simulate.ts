@@ -59,3 +59,56 @@ assert.equal(ends.length, 1, "Live Activity muss genau einmal beendet werden");
 // zweiter Zyklus nach Landung: nichts mehr
 const n = sender.sent.length; await monitor.tick(); assert.equal(sender.sent.length, n);
 console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
+// --- Szenario B: Live Activity per Push starten (App geschlossen) ---
+{
+  let planeB: Aircraft | null = null;
+  const trafficB: TrafficSource = {
+    async byHex(h) { return planeB && h.includes(planeB.hex) ? [planeB] : []; },
+    async byCallsign() { return []; }, async byRegistration() { return []; },
+  };
+  const storeB = new Store(openDb(":memory:"));
+  const senderB = new DryRunSender();
+  const monB = new Monitor(storeB, trafficB, senderB);
+  storeB.upsertDevice("devtoken-with-start", "sandbox");
+  storeB.setStartToken("devtoken-with-start", "starttoken0001");
+  storeB.upsertDevice("devtoken-no-start", "sandbox");
+  const mk = (id: string, dev: string, hex: string) => storeB.upsertWatch({ id, device_token: dev, hex, callsign: null, reg: null, title: "DLH7XK",
+    airline_iata: "LH", airline_name: "Lufthansa", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "LHR", dest_lat: LHR.lat, dest_lon: LHR.lon, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  mk("watch-withstart-1", "devtoken-with-start", "aaa111");
+  mk("watch-nostart-0002", "devtoken-no-start", "aaa111");
+  const starts = () => senderB.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "start");
+
+  planeB = { ...base, hex: "aaa111", callsign: "DLH7XK" };
+  await monB.tick();
+  assert.equal(starts().length, 0, "am Boden darf keine Activity gestartet werden");
+
+  planeB = { ...planeB, onGround: false, altitudeFt: 3000, groundSpeedKts: 220, lat: 47.5, lon: 8.2, verticalRateFpm: 2200 };
+  await monB.tick();
+  assert.equal(starts().length, 1, "genau eine Start-Push erwartet (nur das Gerät mit Start-Token)");
+  const st = starts()[0]!;
+  assert.equal(st.deviceToken, "starttoken0001");
+  assert.equal(st.env, "sandbox");
+  const aps = st.payload.aps as any;
+  assert.equal(aps["attributes-type"], "FlightActivityAttributes");
+  assert.equal(aps.attributes.watchId, "watch-withstart-1");
+  assert.equal(aps.attributes.airlineIATA, "LH");
+  assert.ok(aps["content-state"].phaseLabel && "emergency" in aps["content-state"]);
+
+  await monB.tick();
+  assert.equal(starts().length, 1, "nicht ein zweites Mal starten");
+
+  // Die App meldet nach dem Start das Token der Activity: ab jetzt gehen Updates dorthin.
+  storeB.setActivityToken("watch-withstart-1", "activitytoken0001");
+  planeB = { ...planeB, altitudeFt: 20000, lat: 49, lon: 5, verticalRateFpm: 1800 };
+  const w = storeB.getWatch("watch-withstart-1")!; w.last_activity_push = 0; storeB.save(w);
+  const before = senderB.sent.length;
+  await monB.tick();
+  const upd = senderB.sent.slice(before).filter((p) => p.kind === "liveactivity");
+  assert.equal(upd.length, 1);
+  assert.equal(upd[0]!.deviceToken, "activitytoken0001");
+  assert.equal((upd[0]!.payload.aps as any).event, "update");
+  assert.equal(starts().length, 1);
+  console.log("OK: Live Activity wird per Push gestartet (einmal, nur mit Start-Token), danach aktualisiert.");
+}
+

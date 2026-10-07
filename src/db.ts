@@ -33,10 +33,11 @@ export type Watch = {
   last_activity_push: number;
   last_activity_sig: string | null;
   active: number;
+  start_sent: number;
   created_at: number;
 };
 
-export type Device = { token: string; env: "sandbox" | "production" };
+export type Device = { token: string; env: "sandbox" | "production"; start_token: string | null };
 
 export function openDb(path = config.dbPath): DatabaseSync {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -64,6 +65,13 @@ export function openDb(path = config.dbPath): DatabaseSync {
     CREATE INDEX IF NOT EXISTS watches_active ON watches(active);
     CREATE INDEX IF NOT EXISTS watches_device ON watches(device_token);
   `);
+  // Spalten, die nach der ersten Version dazukamen (SQLite kennt kein ADD COLUMN IF NOT EXISTS).
+  for (const sql of [
+    "ALTER TABLE devices ADD COLUMN start_token TEXT",
+    "ALTER TABLE watches ADD COLUMN start_sent INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    try { db.exec(sql); } catch { /* Spalte existiert bereits */ }
+  }
   return db;
 }
 
@@ -78,7 +86,11 @@ export class Store {
   }
 
   getDevice(token: string): Device | undefined {
-    return this.db.prepare(`SELECT token, env FROM devices WHERE token=?`).get(token) as Device | undefined;
+    return this.db.prepare(`SELECT token, env, start_token FROM devices WHERE token=?`).get(token) as Device | undefined;
+  }
+
+  setStartToken(token: string, startToken: string | null) {
+    this.db.prepare(`UPDATE devices SET start_token=? WHERE token=?`).run(startToken, token);
   }
 
   deleteDevice(token: string) {
@@ -127,9 +139,9 @@ export class Store {
     this.db
       .prepare(
         `UPDATE watches SET hex=?, last_seen=?, last_on_ground=?, was_airborne=?, takeoff_sent=?, approach_sent=?,
-           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=? WHERE id=?`,
+           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=? WHERE id=?`,
       )
       .run(w.hex, w.last_seen, w.last_on_ground, w.was_airborne, w.takeoff_sent, w.approach_sent, w.landed_sent,
-        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.id);
+        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.id);
   }
 }

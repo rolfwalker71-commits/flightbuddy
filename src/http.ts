@@ -58,6 +58,8 @@ export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLi
         const token = str(b.deviceToken, 200);
         if (!token || !/^[0-9a-f]+$/i.test(token)) return json(res, 400, { error: "deviceToken" });
         store.upsertDevice(token, b.environment === "sandbox" ? "sandbox" : "production");
+        const startToken = str(b.pushToStartToken, 400);
+        if (startToken && /^[0-9a-f]+$/i.test(startToken)) store.setStartToken(token, startToken);
         return json(res, 200, { ok: true });
       }
 
