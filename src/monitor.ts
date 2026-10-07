@@ -87,9 +87,16 @@ export class Monitor {
       let ac = w.hex ? found.get(w.hex) : undefined;
       if (!ac && !w.hex && now - (this.lastResolveTry.get(w.id) ?? 0) >= RESOLVE_RETRY_MS) {
         this.lastResolveTry.set(w.id, now);
-        const list = w.reg ? await this.traffic.byRegistration(w.reg)
-          : w.callsign ? (await this.traffic.searchCallsign(w.callsign)).aircraft : [];
-        ac = list[0];
+        // Erst Registration, dann Callsign. Ein Fehler bei einem Weg (zum Beispiel Registration ohne airplanes.live) darf weder
+        // den anderen Weg noch die übrigen Flüge dieses Zyklus verhindern.
+        for (const attempt of [
+          w.reg ? () => this.traffic.byRegistration(w.reg!) : null,
+          w.callsign ? async () => (await this.traffic.searchCallsign(w.callsign!)).aircraft : null,
+        ]) {
+          if (!attempt) continue;
+          try { ac = (await attempt())[0]; if (ac) break; }
+          catch (e) { this.lastError = e instanceof Error ? e.message : String(e); }
+        }
       }
       await this.handle(w, ac);
       if (w.was_airborne && !w.landed_sent) busy = true;

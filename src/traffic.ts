@@ -16,8 +16,11 @@ export class FallbackTraffic implements TrafficSource {
         const r = await fn(this.secondary);
         this.lastUsed = "secondary";
         return r;
-      } catch {
-        throw primaryError; // Fehler der Hauptquelle melden
+      } catch (secondaryError) {
+        // Beide Gründe nennen, damit klar ist, warum auch die Ausweichquelle nicht geholfen hat.
+        const a = primaryError instanceof Error ? primaryError.message : String(primaryError);
+        const b = secondaryError instanceof Error ? secondaryError.message : String(secondaryError);
+        throw new Error(`${a}; Ausweichquelle: ${b}`);
       }
     }
   }

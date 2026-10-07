@@ -135,7 +135,10 @@ export class OpenSky implements TrafficSource {
     const q = callsign.toUpperCase();
     return (await this.all()).filter((a) => a.callsign?.toUpperCase() === q);
   }
-  async byRegistration(_reg: string): Promise<Aircraft[]> { return []; } // von OpenSky nicht unterstützt
+  /** OpenSky kennt keine Registrationen. Ein Fehler ist ehrlicher als eine leere Liste, die wie «nicht in der Luft» aussieht. */
+  async byRegistration(_reg: string): Promise<Aircraft[]> {
+    throw new Error("OpenSky kann nicht nach Registration suchen (Hex-Code oder Callsign verwenden)");
+  }
 
   async searchCallsign(query: string): Promise<SearchResult> {
     const q = query.toUpperCase().replace(/\s+/g, "");

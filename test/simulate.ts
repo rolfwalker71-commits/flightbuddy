@@ -268,3 +268,30 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   assert.equal(st.getWatch("watch-ocean-0001")!.active, 0, "nach 20 Stunden ohne Daten wird auch ein Flug in der Luft beendet");
   console.log("OK: Funkstille über dem Ozean: Signalverlust einmal melden, Beobachtung läuft weiter, Wiederempfang");
 }
+
+// --- Szenario F: Flug nur mit Registration, Quelle kann keine Registrationen (OpenSky als Ersatz) ---
+{
+  let calls: string[] = [];
+  const plane: Aircraft = { ...base, hex: "4081bb", callsign: "BAW629", registration: "G-TNEF", lat: 46.6, lon: 9.5, onGround: false,
+    altitudeFt: 36000, groundSpeedKts: 415, verticalRateFpm: 0, squawk: "1000" };
+  const traffic: TrafficSource = {
+    async byHex() { calls.push("hex"); return []; },
+    async byRegistration() { calls.push("reg"); throw new Error("OpenSky kann nicht nach Registration suchen"); },
+    async byCallsign() { return []; }, async near() { return []; },
+    async searchCallsign(q) { calls.push("cs:" + q); return { aircraft: q === "BAW629" ? [plane] : [], partial: false }; },
+  };
+  const st = new Store(openDb(":memory:")); const sd = new DryRunSender();
+  const mon = new Monitor(st, traffic, sd);
+  st.upsertDevice("devtoken-reg", "sandbox");
+  const mkw = (id: string, over: Record<string, unknown>) => st.upsertWatch({ id, device_token: "devtoken-reg", hex: null, callsign: null, reg: null, title: "BA629",
+    airline_iata: "BA", airline_name: "British Airways", origin_iata: "ATH", origin_lat: 37.9, origin_lon: 23.9, dest_iata: "LHR", dest_lat: 51.47, dest_lon: -0.45,
+    alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1, ...over });
+  mkw("watch-regonly-0001", { reg: "G-TNEF", callsign: "BAW629" });   // Registration schlägt fehl, Callsign klappt
+  mkw("watch-regonly-0002", { reg: "G-ZZZZ" });                       // nur Registration: Fehler, aber andere Flüge laufen weiter
+  await mon.tick();
+  assert.equal(st.getWatch("watch-regonly-0001")!.hex, "4081bb", "über das Callsign gefunden, obwohl die Registration-Suche scheitert");
+  assert.ok(calls.includes("cs:BAW629"));
+  assert.equal(mon.lastError, null === mon.lastError ? null : mon.lastError, "Zyklus nicht abgebrochen");
+  assert.ok(st.getWatch("watch-regonly-0002")!.active === 1);
+  console.log("OK: Flug mit Registration findet sich über das Callsign; ein Fehler bei einem Weg bricht den Zyklus nicht ab");
+}

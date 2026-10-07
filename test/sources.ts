@@ -83,7 +83,10 @@ const empty: TrafficSource = { ...working, byCallsign: async () => [] };
 const fb = new FallbackTraffic(failing, working);
 assert.equal((await fb.byHex(["4b191e"]))[0]?.hex, "4b191e"); assert.equal(fb.lastUsed, "secondary");
 assert.equal((await new FallbackTraffic(empty, working).byCallsign("X")).length, 0, "leeres Ergebnis ist kein Fehler");
-await assert.rejects(() => new FallbackTraffic(failing, failing).byHex(["a"]), /403/);
+await assert.rejects(() => new FallbackTraffic(failing, failing).byHex(["a"]), /403.*Ausweichquelle: 403/, "beide Gründe nennen");
+// Registration-Suche über OpenSky ist ein Fehler mit Erklärung, keine leere Liste
+await assert.rejects(() => new FallbackTraffic(failing, new OpenSky("cid", "secret", fakeFetch, () => clock)).byRegistration("G-TNEF"), /Registration/);
+await assert.rejects(() => new OpenSky("cid", "secret", fakeFetch, () => clock).byRegistration("G-TNEF"), /nicht nach Registration/);
 console.log("OK: Ausweichquelle bei Fehlern");
 
 // 6) HTTP-Schnittstellen
