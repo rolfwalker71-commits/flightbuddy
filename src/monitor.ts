@@ -235,7 +235,12 @@ export class Monitor {
     const now = this.now();
     const state = this.buildState(w, ac, phase, toDest, origin, dest, eta);
     const sig = `${state.phase}|${Math.round((state.altitudeFt ?? 0) / 500)}|${Math.round((state.speedKts ?? 0) / 10)}|${Math.round((state.progress ?? 0) * 100)}|${state.emergency}`;
-    if (!ending && (sig === w.last_activity_sig || now - w.last_activity_push < ACTIVITY_MIN_INTERVAL_MS)) return;
+    // Die Restzeit steht als «8:14» im Display und wird bei jedem Update neu berechnet. Damit sie nicht veraltet, kommt unter zwei
+    // Stunden jede Minute ein Update, sonst alle fünf Minuten, auch wenn sich sonst nichts geändert hat.
+    const remainingSec = state.etaTimestamp != null ? state.etaTimestamp - Math.floor(now / 1000) : null;
+    const refreshMs = remainingSec != null && remainingSec < 7200 ? 60_000 : 300_000;
+    const due = remainingSec != null && now - w.last_activity_push >= refreshMs;
+    if (!ending && ((sig === w.last_activity_sig && !due) || now - w.last_activity_push < ACTIVITY_MIN_INTERVAL_MS)) return;
 
     const device = this.store.getDevice(w.device_token);
     if (!device) return;
@@ -245,7 +250,8 @@ export class Monitor {
     if (!ending && state.emergency) aps.alert = { title: `Notfall ${ac.squawk}`, body: w.title };
     const res = await this.push.send({
       kind: "liveactivity", deviceToken: w.activity_token, env: device.env, payload: { aps },
-      priority: ending || state.emergency ? 10 : 5,
+      // In der letzten Stunde sofort zustellen: dort zählt jede Minute.
+      priority: ending || state.emergency || (remainingSec != null && remainingSec < 3600) ? 10 : 5,
     });
     if (res.ok) {
       w.last_activity_push = now;

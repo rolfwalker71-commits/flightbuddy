@@ -295,3 +295,34 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   assert.ok(st.getWatch("watch-regonly-0002")!.active === 1);
   console.log("OK: Flug mit Registration findet sich über das Callsign; ein Fehler bei einem Weg bricht den Zyklus nicht ab");
 }
+
+// --- Szenario G: Restzeit als «8:14»: regelmässige Updates, damit die Anzeige nicht veraltet ---
+{
+  let clock = Date.parse("2026-10-07T20:00:00Z");
+  const fixed: Aircraft = { ...base, hex: "4081bb", callsign: "BAW629", lat: 47.0, lon: 14.0, onGround: false, altitudeFt: 36000,
+    groundSpeedKts: 450, verticalRateFpm: 0, squawk: "1000" };
+  const traffic: TrafficSource = {
+    async byHex() { return [fixed]; }, async byCallsign() { return [fixed]; }, async byRegistration() { return []; },
+    async near() { return []; }, async searchCallsign() { return { aircraft: [fixed], partial: false }; },
+  };
+  const st = new Store(openDb(":memory:")); const sd = new DryRunSender();
+  const mon = new Monitor(st, traffic, sd, () => clock);
+  st.upsertDevice("devtoken-min", "sandbox");
+  st.upsertWatch({ id: "watch-minute-0001", device_token: "devtoken-min", hex: "4081bb", callsign: "BAW629", reg: null, title: "BA629",
+    airline_iata: "BA", airline_name: "BA", origin_iata: "ATH", origin_lat: 37.9, origin_lon: 23.9, dest_iata: "LHR", dest_lat: 51.47, dest_lon: -0.45,
+    alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  st.setActivityToken("watch-minute-0001", "activitytokenminute");
+  const w0 = st.getWatch("watch-minute-0001")!; w0.was_airborne = 1; w0.last_on_ground = 0; st.save(w0);
+  const updates = () => sd.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "update");
+
+  await mon.tick();                       // erstes Update
+  const n0 = updates().length; assert.equal(n0, 1);
+  const eta0 = (updates()[0]!.payload.aps as any)["content-state"].etaTimestamp as number;
+  const remaining0 = eta0 - clock / 1000;
+  assert.ok(remaining0 > 3600 && remaining0 < 7200, "Test setzt 1–2 Stunden Restzeit voraus, hat " + remaining0);
+  clock += 30_000; await mon.tick(); assert.equal(updates().length, n0, "30 s später ohne Änderung: kein Update");
+  clock += 31_000; await mon.tick(); assert.equal(updates().length, n0 + 1, "unter 2 Stunden: nach 60 s ein Update, auch ohne Änderung");
+  assert.equal(updates().at(-1)!.priority, 5, "über einer Stunde Restzeit normale Priorität");
+  clock += 61_000; await mon.tick(); assert.equal(updates().length, n0 + 2, "und wieder nach 60 s");
+  console.log("OK: unter 2 Stunden Restzeit jede Minute ein Update der Live Activity");
+}
