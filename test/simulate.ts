@@ -6,6 +6,7 @@ import { DryRunSender } from "../src/apns.ts";
 import { Store, openDb } from "../src/db.ts";
 import { Monitor } from "../src/monitor.ts";
 import type { Aircraft } from "../src/logic.ts";
+import { DEMO, DemoTraffic } from "../src/demo.ts";
 
 const ZRH = { lat: 47.4647, lon: 8.5492 };
 const LHR = { lat: 51.47, lon: -0.4543 };
@@ -112,3 +113,31 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   console.log("OK: Live Activity wird per Push gestartet (einmal, nur mit Start-Token), danach aktualisiert.");
 }
 
+
+// --- Szenario C: Demo-Verkehr durchläuft alle Ereignisse mit dem echten Monitor ---
+{
+  let clock = 1_000_000;
+  const store = new Store(openDb(":memory:"));
+  const sender = new DryRunSender();
+  const mon = new Monitor(store, new DemoTraffic(() => clock), sender);
+  store.upsertDevice("devtoken-demo", "sandbox");
+  store.setStartToken("devtoken-demo", "starttokendemo");
+  store.upsertWatch({ id: "watch-demo-0001", device_token: "devtoken-demo", hex: null, callsign: "SWR8", reg: null, title: "SWR8",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "LHR", dest_lat: LHR.lat, dest_lon: LHR.lon, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  const titles: string[] = [];
+  for (let t = 0; t <= DEMO.landedAt + 30; t += 5) {
+    clock = 1_000_000 + t * 1000;
+    const w = store.getWatch("watch-demo-0001")!; w.last_activity_push = 0; store.save(w);
+    const n = sender.sent.length;
+    await mon.tick();
+    for (const p of sender.sent.slice(n)) if (p.kind === "alert") titles.push((p.payload.aps as any).alert.title);
+    if (t === 60) store.setActivityToken("watch-demo-0001", "activitytokendemo"); // App meldet das Token nach dem Start
+  }
+  assert.deepEqual(titles.map((x) => x.replace(/\d+ Min\./, "n Min.")),
+    ["SWR8 ist gestartet", "Notfall-Squawk 7700", "SWR8 landet in ca. n Min.", "SWR8 ist gelandet"]);
+  const starts = sender.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "start");
+  const ends = sender.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "end");
+  assert.equal(starts.length, 1); assert.equal(ends.length, 1);
+  console.log("OK: Demo-Flug löst Start, Squawk, Anflug und Landung genau einmal aus.");
+}

@@ -48,7 +48,7 @@ export function createApi(store: Store, monitor: Monitor, airplanes: AirplanesLi
           monitorError: monitor.lastError,
           apns: push.info,
           watches: store.activeWatches().length,
-          airplanes: airplanes ? { lastOk: airplanes.lastOk, lastError: airplanes.lastError } : null,
+          airplanes: airplanes ? { lastOk: airplanes.lastOk, lastError: airplanes.lastError } : { demo: true },
         });
       }
       if (!authorized(req)) return json(res, 401, { error: "unauthorized" });
