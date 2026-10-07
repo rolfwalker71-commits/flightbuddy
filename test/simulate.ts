@@ -218,3 +218,53 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   assert.equal(store.getWatch("watch-ghost-0001")!.active, 0, "nie gesehener Flug wird 12 Stunden nach dem Abflug beendet");
   console.log("OK: Flug auf Vorrat schläft, erinnert 3 Stunden vorher, findet SWR64E und meldet den Start");
 }
+
+// --- Szenario E: Funkstille über dem Ozean ---
+{
+  const H = 3600_000;
+  let clock = Date.parse("2026-10-07T11:30:00Z");
+  let plane: Aircraft | null = { ...base, hex: "4b191e", callsign: "SWR64E", registration: "HB-JNI", lat: 46, lon: -3, onGround: false,
+    altitudeFt: 34000, groundSpeedKts: 460, verticalRateFpm: 0, squawk: "3046" };
+  const traffic: TrafficSource = {
+    async byHex(h) { return plane && h.includes(plane.hex) ? [plane] : []; },
+    async byCallsign() { return plane ? [plane] : []; }, async byRegistration() { return []; },
+    async near() { return []; }, async searchCallsign() { return { aircraft: plane ? [plane] : [], partial: false }; },
+  };
+  const st = new Store(openDb(":memory:")); const sd = new DryRunSender();
+  const mon = new Monitor(st, traffic, sd, () => clock);
+  st.upsertDevice("devtoken-ocean", "sandbox");
+  st.upsertWatch({ id: "watch-ocean-0001", device_token: "devtoken-ocean", hex: "4b191e", callsign: "SWR64E", reg: null, title: "LX64",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "MIA", dest_lat: 25.79, dest_lon: -80.29, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  st.setActivityToken("watch-ocean-0001", "activitytokenocean");
+  const lastLA = () => sd.sent.filter((p) => p.kind === "liveactivity").at(-1)!;
+  const laCount = () => sd.sent.filter((p) => p.kind === "liveactivity").length;
+
+  const w0 = st.getWatch("watch-ocean-0001")!; w0.was_airborne = 1; st.save(w0); // Start wurde schon beobachtet
+  await mon.tick();                                 // letzter Empfang
+  const n0 = laCount();
+  plane = null; clock += 5 * 60_000; await mon.tick();
+  assert.equal(laCount(), n0, "5 Minuten Funkstille sind noch kein Signalverlust");
+  clock += 6 * 60_000; await mon.tick();
+  assert.equal(laCount(), n0 + 1, "nach 10 Minuten Funkstille genau ein Update");
+  const cs = (lastLA().payload.aps as any)["content-state"];
+  assert.equal(cs.phaseLabel, "Kein Empfang"); assert.equal(cs.phase, "lost");
+  assert.ok(cs.etaTimestamp != null && cs.departureTimestamp !== undefined, "Landezeit bleibt erhalten");
+  clock += 30 * 60_000; await mon.tick(); assert.equal(laCount(), n0 + 1, "kein zweites Update bei anhaltender Stille");
+
+  // Ozean-Überquerung: nach 7 Stunden ohne Daten läuft die Beobachtung weiter (früher: nach 6 Stunden beendet)
+  clock += 7 * H; await mon.tick();
+  assert.equal(st.getWatch("watch-ocean-0001")!.active, 1, "in der Luft nicht nach 6 Stunden aufgeben");
+
+  // Wieder Empfang kurz vor Miami: normales Update ersetzt «Kein Empfang»
+  plane = { ...base, hex: "4b191e", callsign: "SWR64E", lat: 26.5, lon: -78, onGround: false, altitudeFt: 12000, groundSpeedKts: 300, verticalRateFpm: -1500 };
+  const n1 = laCount(); await mon.tick();
+  assert.ok(laCount() > n1, "nach Wiederempfang ein normales Update");
+  assert.notEqual(((lastLA().payload.aps as any)["content-state"]).phaseLabel, "Kein Empfang");
+  assert.equal(st.getWatch("watch-ocean-0001")!.lost_sent, 0);
+
+  // Am Boden nie gesehene Flüge enden weiterhin nach 6 Stunden, in der Luft erst nach 20
+  plane = null; clock += 21 * H; await mon.tick();
+  assert.equal(st.getWatch("watch-ocean-0001")!.active, 0, "nach 20 Stunden ohne Daten wird auch ein Flug in der Luft beendet");
+  console.log("OK: Funkstille über dem Ozean: Signalverlust einmal melden, Beobachtung läuft weiter, Wiederempfang");
+}

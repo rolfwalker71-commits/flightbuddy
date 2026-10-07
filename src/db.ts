@@ -50,6 +50,8 @@ export type Watch = {
   notified_status: string | null;
   next_check: number;
   last_check: number | null;
+  last_state: string | null;
+  lost_sent: number;
   reminder_sent: number;
   created_at: number;
 };
@@ -103,6 +105,8 @@ export function openDb(path = config.dbPath): DatabaseSync {
     "ALTER TABLE watches ADD COLUMN notified_status TEXT",
     "ALTER TABLE watches ADD COLUMN next_check INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE watches ADD COLUMN last_check INTEGER",
+    "ALTER TABLE watches ADD COLUMN last_state TEXT",
+    "ALTER TABLE watches ADD COLUMN lost_sent INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE watches ADD COLUMN reminder_sent INTEGER NOT NULL DEFAULT 0",
   ]) {
     try { db.exec(sql); } catch { /* Spalte existiert bereits */ }
@@ -195,9 +199,9 @@ export class Store {
     this.db
       .prepare(
         `UPDATE watches SET hex=?, last_seen=?, last_on_ground=?, was_airborne=?, takeoff_sent=?, approach_sent=?,
-           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=?, takeoff_at=?, reminder_sent=? WHERE id=?`,
+           landed_sent=?, last_squawk=?, last_activity_push=?, last_activity_sig=?, active=?, activity_token=?, start_sent=?, takeoff_at=?, reminder_sent=?, last_state=?, lost_sent=? WHERE id=?`,
       )
       .run(w.hex, w.last_seen, w.last_on_ground, w.was_airborne, w.takeoff_sent, w.approach_sent, w.landed_sent,
-        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.takeoff_at, w.reminder_sent, w.id);
+        w.last_squawk, w.last_activity_push, w.last_activity_sig, w.active, w.activity_token, w.start_sent, w.takeoff_at, w.reminder_sent, w.last_state, w.lost_sent, w.id);
   }
 }

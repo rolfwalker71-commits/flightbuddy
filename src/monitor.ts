@@ -10,6 +10,10 @@ import {
 const APPROACH_MINUTES = 20;
 const ACTIVITY_MIN_INTERVAL_MS = 15_000;
 const UNSEEN_GIVE_UP_MS = 6 * 3600_000;
+/** In der Luft bleibt ein Flug lange ohne Daten (Ozean: kein Bodenempfang), bevor wir ihn aufgeben. */
+const AIRBORNE_GIVE_UP_MS = 20 * 3600_000;
+/** Nach so langer Funkstille wird die Live Activity einmal auf «Kein Empfang» gesetzt. */
+const SIGNAL_LOST_AFTER_MS = 10 * 60_000;
 /** Geplante Flüge schlafen bis kurz vor dem Abflug; das Flugzeug erscheint meist 1–2 Stunden vorher im ADS-B-Netz. */
 export const WAKE_BEFORE_DEP_MS = 4 * 3600_000;
 const REMINDER_BEFORE_DEP_MS = 3 * 3600_000;
@@ -96,12 +100,16 @@ export class Monitor {
   private async handle(w: Watch, ac: Aircraft | undefined) {
     const now = this.now();
     if (!ac) {
-      if (w.last_seen && now - w.last_seen > UNSEEN_GIVE_UP_MS) {
+      const flying = w.was_airborne === 1 && !w.landed_sent;
+      if (w.last_seen && now - w.last_seen > (flying ? AIRBORNE_GIVE_UP_MS : UNSEEN_GIVE_UP_MS)) {
         w.active = 0;
         this.store.save(w);
+        return;
       }
+      if (flying && !w.lost_sent && w.last_seen && now - w.last_seen > SIGNAL_LOST_AFTER_MS) await this.signalLost(w);
       return;
     }
+    w.lost_sent = 0; // wieder Empfang: das nächste normale Update ersetzt «Kein Empfang»
     w.last_seen = now;
     if (!w.hex) w.hex = ac.hex;
 
@@ -235,9 +243,31 @@ export class Monitor {
     if (res.ok) {
       w.last_activity_push = now;
       w.last_activity_sig = sig;
+      w.last_state = JSON.stringify(state);
     } else if (res.gone) {
       w.activity_token = null;
     }
+  }
+
+  /**
+   * Das Flugzeug sendet nicht mehr (zum Beispiel über dem Ozean). Die Live Activity zeigt das einmal an und behält die
+   * zuletzt berechnete Landezeit, deren Zähler weiterläuft.
+   */
+  private async signalLost(w: Watch) {
+    w.lost_sent = 1;
+    if (w.activity_token && w.last_state) {
+      const device = this.store.getDevice(w.device_token);
+      if (device) {
+        const state = { ...JSON.parse(w.last_state), phase: "lost", phaseLabel: "Kein Empfang" };
+        const ts = Math.floor(this.now() / 1000);
+        const res = await this.push.send({
+          kind: "liveactivity", deviceToken: w.activity_token, env: device.env, priority: 5,
+          payload: { aps: { timestamp: ts, event: "update", "content-state": state } },
+        });
+        if (res.gone) w.activity_token = null;
+      }
+    }
+    this.store.save(w);
   }
 
   /** Erinnerung drei Stunden vor dem geplanten Abflug. */
