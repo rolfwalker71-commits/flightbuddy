@@ -91,10 +91,17 @@ export class DryRunSender implements PushSender {
 }
 
 export function createSender(): PushSender {
-  const pem = loadApnsKey();
-  if (!pem) {
-    console.warn("APNs-Schlüssel nicht konfiguriert: Dry-Run, es werden keine Pushes gesendet.");
+  const key = loadApnsKey();
+  if (key.pem === null) {
+    console.warn(`APNs-Schlüssel nicht geladen: ${key.reason}. Dry-Run, es werden keine Pushes gesendet.`);
     return new DryRunSender();
   }
-  return new ApnsSender(pem);
+  try {
+    const sender = new ApnsSender(key.pem);
+    console.log(`APNs bereit: Key ${config.apns.keyId}, Team ${config.apns.teamId}, Topic ${config.apns.topic}`);
+    return sender;
+  } catch (e) {
+    console.warn(`APNs-Schlüssel ungültig (${e instanceof Error ? e.message : e}). Dry-Run, es werden keine Pushes gesendet.`);
+    return new DryRunSender();
+  }
 }
