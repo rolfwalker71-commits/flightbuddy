@@ -33,12 +33,12 @@ export class FallbackTraffic implements TrafficSource {
 }
 
 export type PublicAircraft = Pick<Aircraft, "hex" | "callsign" | "registration" | "type" | "lat" | "lon" | "altitudeFt"
-  | "groundSpeedKts" | "track" | "verticalRateFpm" | "squawk" | "onGround">;
+  | "groundSpeedKts" | "track" | "verticalRateFpm" | "squawk" | "onGround"> & { positionAgeSeconds: number | null };
 
 export function toPublic(a: Aircraft): PublicAircraft {
   return { hex: a.hex, callsign: a.callsign, registration: a.registration, type: a.type ?? null, lat: a.lat, lon: a.lon,
     altitudeFt: a.altitudeFt, groundSpeedKts: a.groundSpeedKts, track: a.track, verticalRateFpm: a.verticalRateFpm,
-    squawk: a.squawk, onGround: a.onGround };
+    squawk: a.squawk, onGround: a.onGround, positionAgeSeconds: a.ageSec ?? null };
 }
 
 /** Welche Quelle gerade antwortet und wie oft die App die Karte aktualisieren soll (OpenSky hat ein Tageskontingent). */

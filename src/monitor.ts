@@ -3,8 +3,9 @@ import type { Track } from "./opensky.ts";
 import type { PushSender } from "./apns.ts";
 import type { Store, Watch } from "./db.ts";
 import { config } from "./config.ts";
+import { homeSuffix } from "./schedule.ts";
 import {
-  EMERGENCY, PHASE_LABEL, distanceNm, etaSeconds, phaseOf, progress, shouldAlertSquawk, squawkMeaning,
+  EMERGENCY, PHASE_LABEL, STALE_POSITION_SEC, distanceNm, etaSeconds, phaseOf, progress, shouldAlertSquawk, squawkMeaning,
   type Aircraft,
 } from "./logic.ts";
 
@@ -20,6 +21,13 @@ export const WAKE_BEFORE_DEP_MS = 4 * 3600_000;
 const REMINDER_BEFORE_DEP_MS = 3 * 3600_000;
 const GIVE_UP_AFTER_DEP_MS = 12 * 3600_000;
 const RESOLVE_RETRY_MS = 3 * 60_000;
+/**
+ * Viele Flughäfen werden am Boden nicht empfangen: das Flugzeug verschwindet im Sinkflug und wird nie «am Boden» gesehen.
+ * War es zuletzt tief und nahe am Ziel und bleibt danach so lange still, gilt es als gelandet.
+ */
+const LANDED_INFER_AFTER_MS = 6 * 60_000;
+const LANDED_INFER_MAX_ALT_FT = 4000;
+const LANDED_INFER_MAX_DIST_NM = 25;
 
 const alt = (ft: number | null) => (ft == null ? "–" : `${Math.round(ft).toLocaleString("de-CH")} ft`);
 
@@ -29,6 +37,8 @@ export class Monitor {
   lastError: string | null = null;
 
   private lastResolveTry = new Map<string, number>();
+  /** Letzte frisch empfangene Höhe/Distanz je Flug (für die Landungsschätzung ohne Bodenempfang). */
+  private lastLow = new Map<string, { altFt: number | null; distNm: number | null; vrFpm: number | null }>();
 
   constructor(
     private store: Store,
@@ -37,6 +47,8 @@ export class Monitor {
     private now: () => number = () => Date.now(),
     /** Quelle für den bisherigen Flugweg (OpenSky); optional. */
     private tracks?: { track(hex: string): Promise<Track | null> },
+    /** Mindestabstand der Abfragen während eines Flugs (OpenSky hat ein Tageskontingent). */
+    private minActivePollMs: () => number = () => 0,
   ) {}
 
   start() {
@@ -44,7 +56,7 @@ export class Monitor {
       let next = config.pollIdleMs;
       try {
         const busy = await this.tick();
-        if (busy) next = config.pollActiveMs;
+        if (busy) next = Math.max(config.pollActiveMs, this.minActivePollMs());
         this.lastError = null;
       } catch (e) {
         this.lastError = e instanceof Error ? e.message : String(e);
@@ -88,6 +100,8 @@ export class Monitor {
     let busy = false;
     for (const w of watches) {
       let ac = w.hex ? found.get(w.hex) : undefined;
+      // Eine alte Position ist kein Empfang: sonst bliebe ein längst verschwundenes Flugzeug «live» (und eine Landung unbemerkt).
+      if (ac && ac.ageSec != null && ac.ageSec > STALE_POSITION_SEC) ac = undefined;
       if (!ac && !w.hex && now - (this.lastResolveTry.get(w.id) ?? 0) >= RESOLVE_RETRY_MS) {
         this.lastResolveTry.set(w.id, now);
         // Erst Registration, dann Callsign. Ein Fehler bei einem Weg (zum Beispiel Registration ohne airplanes.live) darf weder
@@ -116,6 +130,7 @@ export class Monitor {
         this.store.save(w);
         return;
       }
+      if (flying && await this.inferLanding(w)) return;
       if (flying && !w.lost_sent && w.last_seen && now - w.last_seen > SIGNAL_LOST_AFTER_MS) await this.signalLost(w);
       return;
     }
@@ -127,8 +142,9 @@ export class Monitor {
     const origin = w.origin_lat != null && w.origin_lon != null ? { lat: w.origin_lat, lon: w.origin_lon } : null;
     const cur = { lat: ac.lat, lon: ac.lon };
     const toDest = dest ? distanceNm(cur, dest) : null;
-    const eta = dest ? etaSeconds(cur, dest, ac.groundSpeedKts) : null;
+    const eta = dest ? etaSeconds(cur, dest, ac.groundSpeedKts, ac.altitudeFt, ac.verticalRateFpm) : null;
     const phase = phaseOf(ac, toDest);
+    this.lastLow.set(w.id, { altFt: ac.altitudeFt, distNm: toDest, vrFpm: ac.verticalRateFpm });
     const route = w.origin_iata && w.dest_iata ? `${w.origin_iata} → ${w.dest_iata}` : "";
 
     // Notfall-Squawk
@@ -267,6 +283,40 @@ export class Monitor {
   }
 
   /**
+   * Landung ohne Bodenempfang: zuletzt tief, im Sinkflug und nahe am Ziel gesehen, seither still.
+   * Meldet die Landung und beendet die Live Activity. Gibt true zurück, wenn der Flug damit abgeschlossen ist.
+   */
+  private async inferLanding(w: Watch): Promise<boolean> {
+    const now = this.now();
+    const last = this.lastLow.get(w.id);
+    if (w.landed_sent || !w.last_seen || !last || now - w.last_seen < LANDED_INFER_AFTER_MS) return false;
+    if (last.altFt == null || last.altFt > LANDED_INFER_MAX_ALT_FT) return false;
+    if (last.distNm == null || last.distNm > LANDED_INFER_MAX_DIST_NM) return false;
+    if ((last.vrFpm ?? 0) > 500) return false; // steigt noch: kommt von einem Start, nicht von einer Landung
+    w.landed_sent = 1;
+    const route = w.origin_iata && w.dest_iata ? `${w.origin_iata} → ${w.dest_iata}` : "";
+    if (w.alert_landing) {
+      await this.alert(w, { title: `${w.title} ist gelandet`, body: route, level: "active", kind: "landing" });
+    }
+    if (w.activity_token && w.last_state) {
+      const device = this.store.getDevice(w.device_token);
+      if (device) {
+        const ts = Math.floor(now / 1000);
+        const state = { ...JSON.parse(w.last_state), phase: "ground", phaseLabel: PHASE_LABEL.ground, altitudeFt: 0 };
+        const res = await this.push.send({
+          kind: "liveactivity", deviceToken: w.activity_token, env: device.env, priority: 10,
+          payload: { aps: { timestamp: ts, event: "end", "content-state": state, "dismissal-date": ts + 600 } },
+        });
+        if (res.gone) w.activity_token = null;
+      }
+    }
+    this.lastLow.delete(w.id);
+    w.active = 0;
+    this.store.save(w);
+    return true;
+  }
+
+  /**
    * Das Flugzeug sendet nicht mehr (zum Beispiel über dem Ozean). Die Live Activity zeigt das einmal an und behält die
    * zuletzt berechnete Landezeit, deren Zähler weiterläuft.
    */
@@ -310,9 +360,10 @@ export class Monitor {
 
   /** Erinnerung drei Stunden vor dem geplanten Abflug. */
   private async reminder(w: Watch) {
-    const at = new Date(w.sched_dep!).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: w.origin_tz ?? config.displayTz });
+    const tz = w.origin_tz ?? config.displayTz;
+    const at = new Date(w.sched_dep!).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: tz });
     const route = w.origin_iata && w.dest_iata ? `${w.origin_iata} → ${w.dest_iata} · ` : "";
-    await this.alert(w, { title: `${w.title} hebt in 3 Std. ab`, body: `${route}${at} Uhr`, level: "active", kind: "reminder" });
+    await this.alert(w, { title: `${w.title} hebt in 3 Std. ab`, body: `${route}${at} Uhr${homeSuffix(w.sched_dep!, tz)}`, level: "active", kind: "reminder" });
   }
 
   private async alert(w: Watch, a: { title: string; body: string; level: "active" | "time-sensitive"; kind: string }) {

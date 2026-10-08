@@ -16,9 +16,18 @@ export function progress(origin: LatLon, dest: LatLon, cur: LatLon): number {
   return total > 0 ? Math.min(1, Math.max(0, 1 - distanceNm(cur, dest) / total)) : 0;
 }
 
-export function etaSeconds(cur: LatLon, dest: LatLon, gsKts: number | null): number | null {
+/**
+ * Restzeit bis zur Landung aus Distanz und Bodengeschwindigkeit (Port von ETA.remaining in Geo.swift / FlightPhase.swift).
+ * - Im Steigflug ist die Bodengeschwindigkeit noch klein: Wer 1500 nm vor sich hat, fliegt den Rest nicht mit 250 kt.
+ * - Geflogene Strecken sind länger als der Grosskreis (An- und Abflugverfahren, Umwege): 3 % ab 100 nm.
+ */
+export function etaSeconds(cur: LatLon, dest: LatLon, gsKts: number | null, altitudeFt: number | null = null, verticalRateFpm: number | null = null): number | null {
   if (gsKts == null || gsKts <= 80) return null;
-  return (distanceNm(cur, dest) / gsKts) * 3600;
+  const direct = distanceNm(cur, dest);
+  const climbing = (verticalRateFpm ?? 0) > 500 && (altitudeFt ?? 0) < 30_000;
+  const speed = climbing && direct > 250 ? Math.max(gsKts, 400) : gsKts;
+  const nm = direct > 100 ? direct * 1.03 : direct;
+  return (nm / speed) * 3600;
 }
 
 export type Phase = "ground" | "climb" | "cruise" | "descent" | "approach";
@@ -69,4 +78,9 @@ export type Aircraft = {
   verticalRateFpm: number | null;
   squawk: string | null;
   onGround: boolean;
+  /** Alter der Position in Sekunden (nicht jede Quelle liefert es). */
+  ageSec?: number | null;
 };
+
+/** Eine Position, die älter ist, gilt nicht mehr als Empfang: sie zeigt nur, wo das Flugzeug zuletzt gesehen wurde. */
+export const STALE_POSITION_SEC = 300;

@@ -12,7 +12,7 @@ const SNAPSHOT_TTL_MS = 30_000;
 type Fetch = typeof fetch;
 
 /** Zeile aus /states/all: [icao24, callsign, country, t_pos, t_last, lon, lat, baro_alt(m), on_ground, v(m/s), track, vrate(m/s), …, squawk(14)] */
-export function toAircraft(row: unknown[]): Aircraft | null {
+export function toAircraft(row: unknown[], nowMs: number = Date.now()): Aircraft | null {
   const lon = row[5], lat = row[6];
   if (typeof lat !== "number" || typeof lon !== "number") return null;
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -20,6 +20,8 @@ export function toAircraft(row: unknown[]): Aircraft | null {
   const alt = num(row[7]);
   const v = num(row[9]);
   const vr = num(row[11]);
+  // time_position (Sekunden seit 1970) ist der Zeitpunkt der Position; fehlt er, gilt der letzte Kontakt.
+  const posTime = num(row[3]) ?? num(row[4]);
   return {
     hex: String(row[0]).toLowerCase(),
     callsign: typeof row[1] === "string" && row[1].trim() ? row[1].trim() : null,
@@ -32,6 +34,7 @@ export function toAircraft(row: unknown[]): Aircraft | null {
     verticalRateFpm: vr != null ? vr * FPM_PER_MS : null,
     squawk: normalizeSquawk(row[14]),
     onGround,
+    ageSec: posTime != null ? Math.max(0, Math.round(nowMs / 1000 - posTime)) : null,
   };
 }
 
@@ -134,7 +137,8 @@ export class OpenSky implements TrafficSource {
 
   private async get(path: string): Promise<Aircraft[]> {
     const body = (await this.fetchJson(path)) as { states?: unknown[][] | null } | null;
-    return (body?.states ?? []).map(toAircraft).filter((a): a is Aircraft => a != null);
+    const nowMs = this.now();
+    return (body?.states ?? []).map((r) => toAircraft(r, nowMs)).filter((a): a is Aircraft => a != null);
   }
 
   /** Bisheriger Flugweg des laufenden Flugs (OpenSky «experimentell», 4 Credits aus eigenem Kontingent). null: kein Verlauf bekannt. */

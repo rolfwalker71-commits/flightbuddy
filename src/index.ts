@@ -7,7 +7,7 @@ import { createApi } from "./http.ts";
 import { Monitor } from "./monitor.ts";
 import { OpenSky } from "./opensky.ts";
 import { AeroDataBox, ScheduleMonitor } from "./schedule.ts";
-import { FallbackTraffic } from "./traffic.ts";
+import { FallbackTraffic, trafficMeta } from "./traffic.ts";
 
 const store = new Store(openDb());
 const choice = config.trafficSource;
@@ -30,7 +30,8 @@ const sender = createSender();
 // AeroDataBox (optional): in der App gespeicherter Schlüssel hat Vorrang vor der Umgebungsvariable.
 const aero = new AeroDataBox(store.getSetting("aerodatabox.key") ?? config.aerodatabox.key);
 const schedule = new ScheduleMonitor(store, aero, sender);
-const monitor = new Monitor(store, traffic, sender, () => Date.now(), demoTraffic ?? opensky ?? undefined); // OpenSky liefert auch den bisherigen Flugweg
+const monitor = new Monitor(store, traffic, sender, () => Date.now(), demoTraffic ?? opensky ?? undefined,
+  () => trafficMeta(traffic, source).refreshSeconds * 1000); // OpenSky: höchstens alle 30 s, sonst reicht das Tageskontingent nicht // OpenSky liefert auch den bisherigen Flugweg
 const server = createApi(store, monitor, { source, airplanes, opensky, aero, schedule, tracks: demoTraffic ?? undefined }, sender, traffic);
 console.log(`Datenquelle: ${source}`);
 if (choice === "demo") console.warn("TRAFFIC_SOURCE=demo: simulierter Verkehr (SWR8 / DLH7XK ZRH → LHR), keine echten Flugdaten.");

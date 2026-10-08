@@ -107,6 +107,12 @@ export class AeroDataBox {
 
 const hhmm = (ms: number, tz: string) => new Date(ms).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: tz });
 
+/** « (09:40 Heimzeit)», wenn die Heimzeitzone zur Zeit des Flughafens abweicht; sonst leer. */
+export function homeSuffix(ms: number, tz: string): string {
+  const home = hhmm(ms, config.displayTz);
+  return home === hhmm(ms, tz) ? "" : ` (${home} Heimzeit)`;
+}
+
 /** Tag des Abflugs in der Ortszeit des Abflughafens als yyyy-mm-dd. */
 export function localDate(ms: number, tz: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
@@ -204,13 +210,13 @@ export class ScheduleMonitor {
       const late = total >= 0;
       await this.alert(w,
         total === 0 ? `${w.title} startet wieder planmässig` : `${w.title}: Abflug ${Math.abs(total)} Min. ${late ? "später" : "früher"}`,
-        `Neu ${hhmm(effective, tz)} Uhr (statt ${hhmm(w.sched_dep!, tz)})${route ? ` · ${route}` : ""}`, "schedule-delay");
+        `Neu ${hhmm(effective, tz)} Uhr${homeSuffix(effective, tz)} (statt ${hhmm(w.sched_dep!, tz)})${route ? ` · ${route}` : ""}`, "schedule-delay");
     }
     if (f.gate && f.gate !== w.notified_gate) {
       const before = w.notified_gate;
       w.notified_gate = f.gate;
       await this.alert(w, before ? `${w.title}: Gate neu ${f.gate}` : `${w.title}: Gate ${f.gate}`,
-        `${f.terminal ? `Terminal ${f.terminal} · ` : ""}${before ? `vorher ${before} · ` : ""}Abflug ${hhmm(effective, tz)} Uhr`, "schedule-gate");
+        `${f.terminal ? `Terminal ${f.terminal} · ` : ""}${before ? `vorher ${before} · ` : ""}Abflug ${hhmm(effective, tz)} Uhr${homeSuffix(effective, tz)}`, "schedule-gate");
     }
   }
 

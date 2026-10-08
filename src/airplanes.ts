@@ -20,7 +20,7 @@ export const SUFFIXES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 type Raw = {
   hex: string; flight?: string; r?: string; t?: string; lat?: number; lon?: number;
-  alt_baro?: number | string; gs?: number; track?: number; baro_rate?: number; squawk?: string;
+  alt_baro?: number | string; gs?: number; track?: number; baro_rate?: number; squawk?: string; seen_pos?: number;
 };
 
 function toAircraft(r: Raw): Aircraft | null {
@@ -39,6 +39,7 @@ function toAircraft(r: Raw): Aircraft | null {
     verticalRateFpm: r.baro_rate ?? null,
     squawk: normalizeSquawk(r.squawk),
     onGround: ground,
+    ageSec: typeof r.seen_pos === "number" ? Math.round(r.seen_pos) : null,
   };
 }
 

@@ -362,3 +362,56 @@ console.log(`OK: ${sender.sent.length} Pushes, Ablauf wie erwartet.`);
   assert.notEqual(est, takeoff, "passt der Anfang nicht zum Abflughafen, gilt der Verlauf nicht"); assert.ok(est < nowMs);
   console.log("OK: Abflugzeit aus dem Flugweg (nur wenn er zum Abflughafen passt, einmal pro Flug)");
 }
+
+// --- Szenario: Landung ohne Bodenempfang, veraltete Positionen, ETA im Steigflug ---
+{
+  const { etaSeconds } = await import("../src/logic.ts");
+  const LHR2 = { lat: 51.47, lon: -0.4543 };
+  const MIA = { lat: 25.79, lon: -80.29 };
+  // Im Steigflug (250 kt) mit 4000 nm Rest darf nicht mit 250 kt gerechnet werden.
+  const climbEta = etaSeconds(ZRH, MIA, 250, 12000, 2000)!;
+  const cruiseEta = etaSeconds(ZRH, MIA, 250, 36000, 0)!;
+  assert.ok(climbEta < cruiseEta * 0.7, "Steigflug rechnet mit Reisegeschwindigkeit");
+  assert.equal(etaSeconds(ZRH, LHR2, 50), null, "zu langsam: keine Schätzung");
+
+  let clock = Date.parse("2026-10-08T10:00:00Z");
+  let plane: Aircraft | null = { ...base, hex: "4b1900", callsign: "SWR9", lat: 51.4, lon: -0.75, onGround: false,
+    altitudeFt: 2500, groundSpeedKts: 160, verticalRateFpm: -700, ageSec: 3 };
+  const traffic: TrafficSource = {
+    async byHex(h) { return plane && h.includes(plane.hex) ? [plane] : []; },
+    async byCallsign() { return []; }, async byRegistration() { return []; },
+    async near() { return []; }, async searchCallsign() { return { aircraft: [], partial: false }; },
+  };
+  const st = new Store(openDb(":memory:")); const sd = new DryRunSender();
+  const mon = new Monitor(st, traffic, sd, () => clock);
+  st.upsertDevice("devtoken-infer", "sandbox");
+  st.upsertWatch({ id: "watch-infer-0001", device_token: "devtoken-infer", hex: "4b1900", callsign: "SWR9", reg: null, title: "LX9",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "LHR", dest_lat: LHR2.lat, dest_lon: LHR2.lon, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  st.setActivityToken("watch-infer-0001", "activitytokeninfer");
+  const w0 = st.getWatch("watch-infer-0001")!; w0.was_airborne = 1; st.save(w0);
+  const alertTitles = () => sd.sent.filter((p) => p.kind === "alert").map((p) => (p.payload.aps as any).alert.title as string);
+
+  await mon.tick();                                   // tief im Anflug gesehen, dann Funkstille
+  plane = { ...plane!, ageSec: 900 };                 // OpenSky liefert nur noch den alten Stand
+  clock += 3 * 60_000; await mon.tick();
+  assert.ok(!alertTitles().includes("LX9 ist gelandet"), "nach 3 Minuten noch keine Landung angenommen");
+  clock += 5 * 60_000; await mon.tick();
+  assert.deepEqual(alertTitles().filter((t) => t.includes("gelandet")), ["LX9 ist gelandet"], "Landung ohne Bodenempfang erkannt");
+  assert.equal(st.getWatch("watch-infer-0001")!.active, 0);
+  assert.equal(sd.sent.filter((p) => p.kind === "liveactivity" && (p.payload.aps as any).event === "end").length, 1, "Live Activity beendet");
+
+  // Hoch über dem Ozean gesehen und still: keine Landung annehmen
+  const st2 = new Store(openDb(":memory:")); const sd2 = new DryRunSender();
+  plane = { ...base, hex: "4b1901", callsign: "SWR64E", lat: 45, lon: -30, onGround: false, altitudeFt: 36000, groundSpeedKts: 470, verticalRateFpm: 0, ageSec: 2 };
+  const mon2 = new Monitor(st2, traffic, sd2, () => clock);
+  st2.upsertDevice("devtoken-ocean2", "sandbox");
+  st2.upsertWatch({ id: "watch-ocean2-0001", device_token: "devtoken-ocean2", hex: "4b1901", callsign: "SWR64E", reg: null, title: "LX64",
+    airline_iata: "LX", airline_name: "Swiss", origin_iata: "ZRH", origin_lat: ZRH.lat, origin_lon: ZRH.lon,
+    dest_iata: "MIA", dest_lat: MIA.lat, dest_lon: MIA.lon, alert_squawk: 1, alert_takeoff: 1, alert_landing: 1, alert_approach: 1 });
+  const w2 = st2.getWatch("watch-ocean2-0001")!; w2.was_airborne = 1; st2.save(w2);
+  await mon2.tick(); plane = null; clock += 30 * 60_000; await mon2.tick();
+  assert.equal(st2.getWatch("watch-ocean2-0001")!.landed_sent, 0);
+  assert.equal(st2.getWatch("watch-ocean2-0001")!.active, 1);
+  console.log("OK: Landung ohne Bodenempfang, veraltete Position, ETA im Steigflug");
+}
