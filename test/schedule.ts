@@ -149,4 +149,16 @@ assert.equal((await call("DELETE", "/v1/settings/aerodatabox")).status, 200); as
 server.close();
 console.log("OK: AeroDataBox-Schnittstellen (Schlüssel prüfen, Status, Health ohne Geheimnisse)");
 void keyOk;
+// Ankunftsprognose: revised vor predicted vor geplant; unterwegs stündlich prüfen
+{
+  const { mapFlight } = await import("../src/schedule.ts");
+  const f = mapFlight({ number: "LX 64", status: "EnRoute", departure: { scheduledTime: "2026-10-28 12:05Z" },
+    arrival: { airport: { iata: "MIA" }, scheduledTime: { utc: "2026-10-28 23:00Z" }, predictedTime: { utc: "2026-10-28 23:25Z" } } });
+  assert.equal(f.revArr, Date.parse("2026-10-28T23:25:00Z"));
+  assert.equal(mapFlight({ arrival: { scheduledTime: "2026-10-28 23:00Z" } }).revArr, Date.parse("2026-10-28T23:00:00Z"));
+  assert.equal(mapFlight({}).revArr, null);
+  assert.equal(checkInterval(-5 * 60_000), 3600_000);
+  console.log("OK: Ankunftsprognose (AeroDataBox)");
+}
 process.exit(0);
+

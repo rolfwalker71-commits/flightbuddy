@@ -15,6 +15,8 @@ export type ScheduleInfo = {
   toIata: string | null;
   schedDep: number | null;
   revDep: number | null;
+  /** Prognostizierte Landung laut Anbieter (revised, sonst predicted, sonst geplant). */
+  revArr: number | null;
   gate: string | null;
   terminal: string | null;
 };
@@ -42,7 +44,7 @@ export function mapAeroStatus(raw: string | null | undefined): ScheduleStatus {
 type Raw = {
   number?: string; status?: string;
   departure?: { airport?: { iata?: string }; scheduledTime?: Clock; revisedTime?: Clock; predictedTime?: Clock; terminal?: string; gate?: string };
-  arrival?: { airport?: { iata?: string } };
+  arrival?: { airport?: { iata?: string }; scheduledTime?: Clock; revisedTime?: Clock; predictedTime?: Clock };
 };
 
 export function mapFlight(r: Raw): ScheduleInfo {
@@ -55,6 +57,7 @@ export function mapFlight(r: Raw): ScheduleInfo {
     toIata: r.arrival?.airport?.iata ?? null,
     schedDep: parseAeroTime(d.scheduledTime),
     revDep: parseAeroTime(d.revisedTime) ?? parseAeroTime(d.predictedTime),
+    revArr: parseAeroTime(r.arrival?.revisedTime) ?? parseAeroTime(r.arrival?.predictedTime) ?? parseAeroTime(r.arrival?.scheduledTime),
     gate: d.gate?.trim() || null,
     terminal: d.terminal?.trim() || null,
   };
@@ -121,6 +124,7 @@ export function localDate(ms: number, tz: string): string {
 /** Abstand zwischen zwei Prüfungen: weit vor dem Abflug selten, kurz davor häufiger (schont das Kontingent). */
 export function checkInterval(msToDeparture: number): number {
   const h = msToDeparture / H;
+  if (h <= 0) return H; // unterwegs: stündlich die Ankunftsprognose holen
   if (h > 72) return 24 * H;
   if (h > 24) return 6 * H;
   if (h > 6) return 3 * H;
@@ -154,8 +158,11 @@ export class ScheduleMonitor {
     for (const w of this.store.activeWatches()) {
       if (!w.flight_number || w.sched_dep == null) continue;
       if (w.sched_status === "cancelled") continue; // annullierte Flüge nicht weiter abfragen (schont das Kontingent)
+      if (w.sched_status === "landed") continue;
       const effective = w.dep_rev ?? w.sched_dep;
-      if (this.now() > Math.max(w.sched_dep, effective) + STOP_AFTER_DEP_MS) continue;
+      // Ist die Ankunftsprognose bekannt, wird bis kurz nach der Landung weitergefragt, sonst bis kurz nach dem Abflug.
+      const until = w.arr_rev != null ? w.arr_rev : Math.max(w.sched_dep, effective);
+      if (this.now() > until + STOP_AFTER_DEP_MS) continue;
       if (this.now() < w.next_check) continue;
       if (this.callsThisMonth() >= MAX_CALLS_PER_MONTH()) { this.api.lastError = "Monatslimit der Abfragen erreicht"; return checked; }
       await this.check(w);
@@ -174,6 +181,7 @@ export class ScheduleMonitor {
 
     w.sched_status = info.status;
     w.dep_rev = info.revDep;
+    w.arr_rev = info.revArr;
     w.gate = info.gate;
     w.terminal = info.terminal;
     if (w.alert_schedule) await this.notify(w, info, tz);

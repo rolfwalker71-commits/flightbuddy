@@ -263,7 +263,7 @@ export function createApi(store: Store, monitor: Monitor, info: TrafficInfo, pus
           const dep = w.dep_rev ?? w.sched_dep;
           return json(res, 200, {
             flightNumber: w.flight_number, status: w.sched_status, gate: w.gate, terminal: w.terminal,
-            scheduledDeparture: w.sched_dep, revisedDeparture: w.dep_rev,
+            scheduledDeparture: w.sched_dep, revisedDeparture: w.dep_rev, revisedArrival: w.arr_rev,
             delayMinutes: w.sched_dep != null && dep != null ? Math.round((dep - w.sched_dep) / 60_000) : null,
             checkedAt: w.last_check,
           });

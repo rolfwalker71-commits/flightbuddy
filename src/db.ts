@@ -43,6 +43,7 @@ export type Watch = {
   alert_schedule: number;
   sched_status: string | null;
   dep_rev: number | null;
+  arr_rev: number | null;
   gate: string | null;
   terminal: string | null;
   notified_dep: number | null;
@@ -99,6 +100,7 @@ export function openDb(path = config.dbPath): DatabaseSync {
     "ALTER TABLE watches ADD COLUMN alert_schedule INTEGER NOT NULL DEFAULT 1",
     "ALTER TABLE watches ADD COLUMN sched_status TEXT",
     "ALTER TABLE watches ADD COLUMN dep_rev INTEGER",
+    "ALTER TABLE watches ADD COLUMN arr_rev INTEGER",
     "ALTER TABLE watches ADD COLUMN gate TEXT",
     "ALTER TABLE watches ADD COLUMN terminal TEXT",
     "ALTER TABLE watches ADD COLUMN notified_dep INTEGER",
@@ -177,8 +179,8 @@ export class Store {
   /** Fahrplanzustand (AeroDataBox) speichern. */
   saveSchedule(w: Watch) {
     this.db.prepare(
-      `UPDATE watches SET sched_status=?, dep_rev=?, gate=?, terminal=?, notified_dep=?, notified_gate=?, notified_status=?, next_check=?, last_check=? WHERE id=?`,
-    ).run(w.sched_status, w.dep_rev, w.gate, w.terminal, w.notified_dep, w.notified_gate, w.notified_status, w.next_check, w.last_check, w.id);
+      `UPDATE watches SET sched_status=?, dep_rev=?, arr_rev=?, gate=?, terminal=?, notified_dep=?, notified_gate=?, notified_status=?, next_check=?, last_check=? WHERE id=?`,
+    ).run(w.sched_status, w.dep_rev, w.arr_rev ?? null, w.gate, w.terminal, w.notified_dep, w.notified_gate, w.notified_status, w.next_check, w.last_check, w.id);
   }
 
   deleteWatch(id: string) {
